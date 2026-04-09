@@ -100,16 +100,16 @@ func (t *MessageTool) Execute(ctx context.Context, args map[string]any) *Result 
 	if target == "" {
 		target = ToolChatIDFromCtx(ctx)
 	}
+	target = normalizeMessageTarget(ctx, channel, target)
 	if target == "" {
 		return ErrorResult("target chat ID is required (no current chat in context)")
 	}
 
 	// Self-send guard: prevent agent from sending to its own chat via message tool.
 	// Text self-sends are always blocked (response goes through normal outbound).
-	// MEDIA self-sends are allowed ONLY when the file was NOT already queued for
-	// delivery (i.e. write_file was called with deliver=false). This prevents both
-	// duplicate delivery (deliver=true then message MEDIA:) and runaway retry loops
-	// (deliver=false then message MEDIA: blocked unconditionally).
+	// MEDIA self-sends are allowed when the file was not already queued for
+	// automatic delivery. This preserves the duplicate-send guard for
+	// write_file(deliver=true) while still allowing existing workspace files.
 	ctxChannel := ToolChannelFromCtx(ctx)
 	ctxChatID := ToolChatIDFromCtx(ctx)
 	isSelfSend := ctxChannel != "" && ctxChatID != "" && channel == ctxChannel && target == ctxChatID
@@ -117,6 +117,13 @@ func (t *MessageTool) Execute(ctx context.Context, args map[string]any) *Result 
 		isMediaSend := embeddedMediaPattern.MatchString(message)
 		if !isMediaSend {
 			return ErrorResult("You are already responding to this chat. Your response text will be delivered automatically. Do not use the message tool to send text to your own chat — just include the content in your response text. To deliver files, use write_file with deliver=true instead.")
+		}
+		if filePath, ok := t.resolveMediaPath(ctx, message); ok {
+			if dm := DeliveredMediaFromCtx(ctx); dm != nil {
+				if dm.IsDelivered(filePath) {
+					return ErrorResult("This file is already queued for automatic delivery via write_file(deliver=true). Do not send it again. To deliver files that were written with deliver=false, write them again with deliver=true.")
+				}
+			}
 		}
 		// MEDIA self-send: block if ALL referenced files are already queued for delivery.
 		// Extracts paths from both standalone "MEDIA:path" and embedded multi-line messages.
@@ -132,7 +139,7 @@ func (t *MessageTool) Execute(ctx context.Context, args map[string]any) *Result 
 				}
 			}
 			if allDelivered {
-				return ErrorResult("This file is already queued for automatic delivery via write_file(deliver=true). Do not send it again. To deliver files that were written with deliver=false, use write_file again with deliver=true, or use message(MEDIA:path) which is allowed for undelivered files.")
+				return ErrorResult("This file is already queued for automatic delivery via write_file(deliver=true). Do not send it again. To deliver files that were written with deliver=false, write them again with deliver=true.")
 			}
 		}
 	}
@@ -412,6 +419,53 @@ func isGroupContext(ctx context.Context) bool {
 	return ToolPeerKindFromCtx(ctx) == "group" ||
 		strings.HasPrefix(userID, "group:") ||
 		strings.HasPrefix(userID, "guild:")
+}
+
+// normalizeMessageTarget hardens tool-call targets against common LLM mistakes.
+// For Telegram, agents sometimes send placeholders like "current chat" even though
+// the real numeric chat ID is already present in context. When that happens on the
+// current channel, fall back to the context chat ID instead of letting delivery fail.
+func normalizeMessageTarget(ctx context.Context, channel, target string) string {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return ""
+	}
+	if !isTelegramMessageChannel(ctx, channel) || isTelegramChatTarget(target) {
+		return target
+	}
+
+	ctxChannel := ToolChannelFromCtx(ctx)
+	ctxChatID := strings.TrimSpace(ToolChatIDFromCtx(ctx))
+	if channel == ctxChannel && isTelegramChatTarget(ctxChatID) {
+		slog.Warn("message: invalid telegram target, falling back to current chat",
+			"channel", channel, "target", target, "fallback_chat_id", ctxChatID)
+		return ctxChatID
+	}
+	return target
+}
+
+func isTelegramMessageChannel(ctx context.Context, channel string) bool {
+	if strings.EqualFold(ToolChannelTypeFromCtx(ctx), "telegram") {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(channel), "telegram")
+}
+
+func isTelegramChatTarget(target string) bool {
+	raw := strings.TrimSpace(target)
+	if raw == "" {
+		return false
+	}
+	if idx := strings.Index(raw, ":topic:"); idx > 0 {
+		raw = raw[:idx]
+	} else if idx := strings.Index(raw, ":thread:"); idx > 0 {
+		raw = raw[:idx]
+	}
+	if raw == "" {
+		return false
+	}
+	_, err := strconv.ParseInt(raw, 10, 64)
+	return err == nil
 }
 
 // resolveMediaPath extracts and validates a file path from a "MEDIA:path" string.

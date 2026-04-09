@@ -317,8 +317,8 @@ func TestValidateChannelTenant(t *testing.T) {
 
 	// Wire a mock checker.
 	channels := map[string]uuid.UUID{
-		"telegram":       tenantA,
-		"tenant-b-tg":   tenantB,
+		"telegram":    tenantA,
+		"tenant-b-tg": tenantB,
 	}
 	tool.SetChannelTenantChecker(func(name string) (uuid.UUID, bool) {
 		tid, ok := channels[name]
@@ -504,6 +504,47 @@ func TestMessageToolNumericTargetUsesSendPath(t *testing.T) {
 	}
 	if gotChat != "-1001847298537" {
 		t.Errorf("sender saw chatID %q, want -1001847298537", gotChat)
+	}
+}
+
+func TestMessageToolTelegramInvalidTargetFallsBackToCurrentChat(t *testing.T) {
+	workspace := t.TempDir()
+	workspaceCanonical, _ := filepath.EvalSymlinks(workspace)
+	testFile := filepath.Join(workspaceCanonical, "report.csv")
+	if err := os.WriteFile(testFile, []byte("data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	msgBus := bus.New()
+	tool := NewMessageTool(workspaceCanonical, true)
+	tool.SetMessageBus(msgBus)
+
+	ctx := context.Background()
+	ctx = WithToolChannel(ctx, "valera-telegram-bot")
+	ctx = WithToolChannelType(ctx, "telegram")
+	ctx = WithToolChatID(ctx, "231984513")
+
+	result := tool.Execute(ctx, map[string]any{
+		"action":  "send",
+		"channel": "valera-telegram-bot",
+		"target":  "current chat",
+		"message": "MEDIA:" + testFile,
+	})
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.ForLLM)
+	}
+
+	readCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	out, ok := msgBus.SubscribeOutbound(readCtx)
+	if !ok {
+		t.Fatal("expected outbound message")
+	}
+	if out.ChatID != "231984513" {
+		t.Fatalf("outbound chatID = %q, want %q", out.ChatID, "231984513")
+	}
+	if len(out.Media) != 1 || out.Media[0].URL != testFile {
+		t.Fatalf("unexpected outbound media: %+v", out.Media)
 	}
 }
 
