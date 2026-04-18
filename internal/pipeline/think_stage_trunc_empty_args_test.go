@@ -42,6 +42,68 @@ func TestThinkStage_WriteFileEmptyArgsTreatedAsTruncated(t *testing.T) {
 	}
 }
 
+func TestThinkStage_WebSearchEmptyArgsTreatedAsTruncated(t *testing.T) {
+	t.Parallel()
+	deps := &PipelineDeps{
+		Config: PipelineConfig{MaxIterations: 10, MaxTokens: 1000},
+		CallLLM: func(_ context.Context, _ *RunState, _ providers.ChatRequest) (*providers.ChatResponse, error) {
+			return &providers.ChatResponse{
+				FinishReason: "tool_calls",
+				ToolCalls: []providers.ToolCall{
+					{ID: "tc1", Name: "web_search", Arguments: map[string]any{}},
+				},
+			}, nil
+		},
+	}
+	stage := NewThinkStage(deps)
+	state := defaultState()
+
+	if err := stage.Execute(context.Background(), state); err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+	if stage.Result() != Continue {
+		t.Errorf("Result() = %v, want Continue (retry)", stage.Result())
+	}
+	if state.Think.TruncRetries != 1 {
+		t.Errorf("TruncRetries = %d, want 1", state.Think.TruncRetries)
+	}
+	pending := state.Messages.Pending()
+	if len(pending) != 2 {
+		t.Fatalf("pending len = %d, want 2 (assistant partial + user hint)", len(pending))
+	}
+}
+
+func TestThinkStage_WebFetchEmptyArgsTreatedAsTruncated(t *testing.T) {
+	t.Parallel()
+	deps := &PipelineDeps{
+		Config: PipelineConfig{MaxIterations: 10, MaxTokens: 1000},
+		CallLLM: func(_ context.Context, _ *RunState, _ providers.ChatRequest) (*providers.ChatResponse, error) {
+			return &providers.ChatResponse{
+				FinishReason: "tool_calls",
+				ToolCalls: []providers.ToolCall{
+					{ID: "tc1", Name: "web_fetch", Arguments: map[string]any{}},
+				},
+			}, nil
+		},
+	}
+	stage := NewThinkStage(deps)
+	state := defaultState()
+
+	if err := stage.Execute(context.Background(), state); err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+	if stage.Result() != Continue {
+		t.Errorf("Result() = %v, want Continue (retry)", stage.Result())
+	}
+	if state.Think.TruncRetries != 1 {
+		t.Errorf("TruncRetries = %d, want 1", state.Think.TruncRetries)
+	}
+	pending := state.Messages.Pending()
+	if len(pending) != 2 {
+		t.Fatalf("pending len = %d, want 2 (assistant partial + user hint)", len(pending))
+	}
+}
+
 // TestThinkStage_DatetimeEmptyArgsNoRetry is the critical regression guard
 // for Phase 03. Nullary/optional-args tools (datetime, heartbeat) routinely
 // call with empty args; the truncation heuristic MUST skip them.

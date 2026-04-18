@@ -7,13 +7,14 @@ import (
 )
 
 //go:fix inline
-func boolPtr(b bool) *bool { return new(b) }
+func boolPtr(b bool) *bool { return &b }
 
 func TestResolveTopicConfig_Defaults(t *testing.T) {
 	cfg := config.TelegramConfig{
-		GroupPolicy:    "open",
-		RequireMention: new(true),
-		AllowFrom:      []string{"user1"},
+		GroupPolicy:      "open",
+		RequireMention:   boolPtr(true),
+		AllowBotMessages: true,
+		AllowFrom:        []string{"user1"},
 	}
 
 	result := resolveTopicConfig(cfg, "-100123", 0)
@@ -23,6 +24,9 @@ func TestResolveTopicConfig_Defaults(t *testing.T) {
 	}
 	if result.requireMention == nil || *result.requireMention != true {
 		t.Errorf("requireMention = %v, want true", result.requireMention)
+	}
+	if result.allowBotMessages == nil || *result.allowBotMessages != true {
+		t.Errorf("allowBotMessages = %v, want true", result.allowBotMessages)
 	}
 	if len(result.allowFrom) != 1 || result.allowFrom[0] != "user1" {
 		t.Errorf("allowFrom = %v, want [user1]", result.allowFrom)
@@ -37,9 +41,10 @@ func TestResolveTopicConfig_WildcardGroup(t *testing.T) {
 		GroupPolicy: "open",
 		Groups: map[string]*config.TelegramGroupConfig{
 			"*": {
-				GroupPolicy:    "allowlist",
-				RequireMention: new(false),
-				AllowFrom:      []string{"admin1"},
+				GroupPolicy:      "allowlist",
+				RequireMention:   boolPtr(false),
+				AllowBotMessages: boolPtr(true),
+				AllowFrom:        []string{"admin1"},
 			},
 		},
 	}
@@ -52,6 +57,9 @@ func TestResolveTopicConfig_WildcardGroup(t *testing.T) {
 	if result.requireMention == nil || *result.requireMention != false {
 		t.Errorf("requireMention = %v, want false", result.requireMention)
 	}
+	if result.allowBotMessages == nil || *result.allowBotMessages != true {
+		t.Errorf("allowBotMessages = %v, want true", result.allowBotMessages)
+	}
 	if len(result.allowFrom) != 1 || result.allowFrom[0] != "admin1" {
 		t.Errorf("allowFrom = %v, want [admin1]", result.allowFrom)
 	}
@@ -62,15 +70,17 @@ func TestResolveTopicConfig_SpecificGroupOverridesWildcard(t *testing.T) {
 		GroupPolicy: "open",
 		Groups: map[string]*config.TelegramGroupConfig{
 			"*": {
-				GroupPolicy:    "allowlist",
-				RequireMention: new(false),
-				AllowFrom:      []string{"admin1"},
-				SystemPrompt:   "wildcard prompt",
+				GroupPolicy:      "allowlist",
+				RequireMention:   boolPtr(false),
+				AllowBotMessages: boolPtr(false),
+				AllowFrom:        []string{"admin1"},
+				SystemPrompt:     "wildcard prompt",
 			},
 			"-100123": {
-				GroupPolicy:  "disabled",
-				AllowFrom:    []string{"user2"},
-				SystemPrompt: "group prompt",
+				GroupPolicy:      "disabled",
+				AllowBotMessages: boolPtr(true),
+				AllowFrom:        []string{"user2"},
+				SystemPrompt:     "group prompt",
 			},
 		},
 	}
@@ -83,6 +93,9 @@ func TestResolveTopicConfig_SpecificGroupOverridesWildcard(t *testing.T) {
 	// requireMention not set on specific group → inherits wildcard
 	if result.requireMention == nil || *result.requireMention != false {
 		t.Errorf("requireMention = %v, want false (inherited from wildcard)", result.requireMention)
+	}
+	if result.allowBotMessages == nil || *result.allowBotMessages != true {
+		t.Errorf("allowBotMessages = %v, want true (group override)", result.allowBotMessages)
 	}
 	if len(result.allowFrom) != 1 || result.allowFrom[0] != "user2" {
 		t.Errorf("allowFrom = %v, want [user2]", result.allowFrom)
@@ -97,14 +110,16 @@ func TestResolveTopicConfig_TopicOverridesGroup(t *testing.T) {
 		GroupPolicy: "open",
 		Groups: map[string]*config.TelegramGroupConfig{
 			"-100123": {
-				RequireMention: new(true),
-				SystemPrompt:   "group prompt",
-				Skills:         []string{"skill_a", "skill_b"},
+				RequireMention:   boolPtr(true),
+				AllowBotMessages: boolPtr(false),
+				SystemPrompt:     "group prompt",
+				Skills:           []string{"skill_a", "skill_b"},
 				Topics: map[string]*config.TelegramTopicConfig{
 					"42": {
-						RequireMention: new(false),
-						Skills:         []string{"skill_c"},
-						SystemPrompt:   "topic prompt",
+						RequireMention:   boolPtr(false),
+						AllowBotMessages: boolPtr(true),
+						Skills:           []string{"skill_c"},
+						SystemPrompt:     "topic prompt",
 					},
 				},
 			},
@@ -115,6 +130,9 @@ func TestResolveTopicConfig_TopicOverridesGroup(t *testing.T) {
 
 	if result.requireMention == nil || *result.requireMention != false {
 		t.Errorf("requireMention = %v, want false (topic override)", result.requireMention)
+	}
+	if result.allowBotMessages == nil || *result.allowBotMessages != true {
+		t.Errorf("allowBotMessages = %v, want true (topic override)", result.allowBotMessages)
 	}
 	if len(result.skills) != 1 || result.skills[0] != "skill_c" {
 		t.Errorf("skills = %v, want [skill_c]", result.skills)
@@ -172,10 +190,10 @@ func TestResolveTopicConfig_DisabledTopic(t *testing.T) {
 	cfg := config.TelegramConfig{
 		Groups: map[string]*config.TelegramGroupConfig{
 			"-100123": {
-				Enabled: new(true),
+				Enabled: boolPtr(true),
 				Topics: map[string]*config.TelegramTopicConfig{
 					"42": {
-						Enabled: new(false),
+						Enabled: boolPtr(false),
 					},
 				},
 			},
@@ -231,7 +249,7 @@ func TestEffectiveRequireMention(t *testing.T) {
 	}
 
 	// explicit requireMention overrides default
-	r2 := resolvedTopicConfig{requireMention: new(false)}
+	r2 := resolvedTopicConfig{requireMention: boolPtr(false)}
 	if r2.effectiveRequireMention(true) != false {
 		t.Error("effectiveRequireMention(true) with override=false should be false")
 	}

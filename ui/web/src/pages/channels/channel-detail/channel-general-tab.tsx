@@ -19,7 +19,7 @@ import { channelTypeLabels } from "../channels-status-view";
 
 const ESSENTIAL_CONFIG_KEYS: Record<string, string[]> = {
   _default: ["dm_policy", "group_policy", "require_mention"],
-  telegram: ["dm_policy", "group_policy", "mention_mode", "require_mention"],
+  telegram: ["dm_policy", "group_policy", "mention_mode", "require_mention", "allow_bot_messages"],
 };
 
 interface ChannelGeneralTabProps {

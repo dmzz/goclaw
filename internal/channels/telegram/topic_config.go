@@ -11,14 +11,15 @@ import (
 // Fields are resolved in order: global TelegramConfig → wildcard group ("*") → specific group → specific topic.
 // TS ref: resolveTelegramGroupConfig() in src/telegram/bot.ts + resolveTelegramGroupPromptSettings() in group-config-helpers.ts.
 type resolvedTopicConfig struct {
-	groupPolicy    string
-	requireMention *bool
-	mentionMode    string // "strict" (default) or "yield"
-	allowFrom      []string
-	enabled        *bool
-	skills         []string // nil = inherit, non-nil = override (empty = no skills)
-	tools          []string // nil = inherit (all tools), non-nil = override (supports "group:xxx")
-	systemPrompt   string   // concatenated group + topic prompts
+	groupPolicy      string
+	requireMention   *bool
+	mentionMode      string // "strict" (default) or "yield"
+	allowBotMessages *bool
+	allowFrom        []string
+	enabled          *bool
+	skills           []string // nil = inherit, non-nil = override (empty = no skills)
+	tools            []string // nil = inherit (all tools), non-nil = override (supports "group:xxx")
+	systemPrompt     string   // concatenated group + topic prompts
 }
 
 // resolveTopicConfig resolves the effective config for a chat/topic by merging layers.
@@ -26,10 +27,11 @@ type resolvedTopicConfig struct {
 // topicID is the forum topic thread ID (0 = not a forum topic).
 func resolveTopicConfig(cfg config.TelegramConfig, chatIDStr string, topicID int) resolvedTopicConfig {
 	result := resolvedTopicConfig{
-		groupPolicy:    cfg.GroupPolicy,
-		requireMention: cfg.RequireMention,
-		mentionMode:    cfg.MentionMode,
-		allowFrom:      cfg.AllowFrom,
+		groupPolicy:      cfg.GroupPolicy,
+		requireMention:   cfg.RequireMention,
+		mentionMode:      cfg.MentionMode,
+		allowBotMessages: &cfg.AllowBotMessages,
+		allowFrom:        cfg.AllowFrom,
 	}
 
 	if cfg.Groups == nil {
@@ -70,6 +72,9 @@ func mergeGroupInto(dst *resolvedTopicConfig, src *config.TelegramGroupConfig) {
 	if src.MentionMode != "" {
 		dst.mentionMode = src.MentionMode
 	}
+	if src.AllowBotMessages != nil {
+		dst.allowBotMessages = src.AllowBotMessages
+	}
 	if len(src.AllowFrom) > 0 {
 		dst.allowFrom = src.AllowFrom
 	}
@@ -98,6 +103,9 @@ func mergeTopicInto(dst *resolvedTopicConfig, src *config.TelegramTopicConfig, g
 	}
 	if src.MentionMode != "" {
 		dst.mentionMode = src.MentionMode
+	}
+	if src.AllowBotMessages != nil {
+		dst.allowBotMessages = src.AllowBotMessages
 	}
 	if len(src.AllowFrom) > 0 {
 		dst.allowFrom = src.AllowFrom
@@ -135,6 +143,15 @@ func (r *resolvedTopicConfig) isEnabled() bool {
 func (r *resolvedTopicConfig) effectiveMentionMode(defaultVal string) string {
 	if r.mentionMode != "" {
 		return r.mentionMode
+	}
+	return defaultVal
+}
+
+// effectiveAllowBotMessages returns the resolved allow_bot_messages value.
+// Falls back to the provided default if not overridden.
+func (r *resolvedTopicConfig) effectiveAllowBotMessages(defaultVal bool) bool {
+	if r.allowBotMessages != nil {
+		return *r.allowBotMessages
 	}
 	return defaultVal
 }

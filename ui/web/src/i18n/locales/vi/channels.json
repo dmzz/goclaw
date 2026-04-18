@@ -219,6 +219,7 @@
     "group_policy": { "label": "Chính sách nhóm" },
     "require_mention": { "label": "Yêu cầu @đề cập trong nhóm", "disabledHint": "Chế độ đa bot luôn lắng nghe tất cả tin nhắn" },
     "mention_mode": { "label": "Hành vi phản hồi nhóm", "help": "Cách bot quyết định khi nào phản hồi trong nhóm có nhiều bot." },
+    "allow_bot_messages": { "label": "Cho phép tin nhắn từ bot khác", "help": "Cho phép tin nhắn đến từ các bot khác trong nhóm. Chế độ yield vẫn bỏ qua trả lời do bot viết để đáp lại bot khác nhằm tránh vòng lặp ping-pong." },
     "history_limit": { "label": "Giới hạn lịch sử nhóm", "help": "Số tin nhắn nhóm chờ tối đa cho ngữ cảnh (0 = tắt)" },
     "dm_stream": { "label": "Stream DM", "help": "Truyền phản hồi liên tục trong DM" },
     "group_stream": { "label": "Stream nhóm", "help": "Truyền phản hồi liên tục trong nhóm" },

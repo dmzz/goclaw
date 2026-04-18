@@ -12,7 +12,6 @@ func (c *Channel) detectMention(msg *telego.Message, botUsername string) bool {
 	if botUsername == "" {
 		return false
 	}
-	lowerBot := strings.ToLower(botUsername)
 
 	// Check both text entities and caption entities (photos use Caption, not Text).
 	for _, pair := range []struct {
@@ -26,32 +25,27 @@ func (c *Channel) detectMention(msg *telego.Message, botUsername string) bool {
 			continue
 		}
 		for _, entity := range pair.entities {
-			if entity.Type == "mention" {
-				mentioned := pair.text[entity.Offset : entity.Offset+entity.Length]
-				if strings.EqualFold(mentioned, "@"+botUsername) {
-					return true
-				}
+			if entity.Type != "mention" && entity.Type != "bot_command" {
+				continue
 			}
-			if entity.Type == "bot_command" {
-				cmdText := pair.text[entity.Offset : entity.Offset+entity.Length]
-				if strings.Contains(strings.ToLower(cmdText), "@"+lowerBot) {
-					return true
-				}
+			if entityText, ok := telegramEntityText(pair.text, entity); ok && textTargetsTelegramHandle(entityText, botUsername) {
+				return true
 			}
 		}
 	}
 
-	// Fallback: substring check in both text and caption
-	if msg.Text != "" && strings.Contains(strings.ToLower(msg.Text), "@"+lowerBot) {
+	// Fallback: parse visible text in both text and caption. This keeps
+	// mention detection working even when entities are absent or malformed.
+	if textTargetsTelegramHandle(msg.Text, botUsername) {
 		return true
 	}
-	if msg.Caption != "" && strings.Contains(strings.ToLower(msg.Caption), "@"+lowerBot) {
+	if textTargetsTelegramHandle(msg.Caption, botUsername) {
 		return true
 	}
 
 	// Reply to bot's message = implicit mention
 	if msg.ReplyToMessage != nil && msg.ReplyToMessage.From != nil {
-		if msg.ReplyToMessage.From.Username == botUsername {
+		if strings.EqualFold(msg.ReplyToMessage.From.Username, botUsername) {
 			return true
 		}
 	}
@@ -63,8 +57,6 @@ func (c *Channel) detectMention(msg *telego.Message, botUsername string) bool {
 // Used by "yield" mention mode: if another entity is explicitly @mentioned, this bot yields.
 // Checks both "mention" entities (@username) and "bot_command" entities (/cmd@bot).
 func (c *Channel) hasOtherMention(msg *telego.Message, myUsername string) bool {
-	lowerMy := strings.ToLower(myUsername)
-
 	for _, pair := range []struct {
 		entities []telego.MessageEntity
 		text     string
@@ -77,29 +69,58 @@ func (c *Channel) hasOtherMention(msg *telego.Message, myUsername string) bool {
 		}
 		for _, entity := range pair.entities {
 			if entity.Type == "mention" {
-				mentioned := pair.text[entity.Offset : entity.Offset+entity.Length]
-				mentionedLower := strings.ToLower(mentioned)
-				// Skip our own mention
-				if mentionedLower == "@"+lowerMy {
+				mentioned, ok := telegramEntityText(pair.text, entity)
+				if !ok {
 					continue
 				}
-				// Any other @mention in the message → another bot/user was called
-				return true
+				if !strings.EqualFold(strings.TrimPrefix(mentioned, "@"), myUsername) {
+					return true
+				}
 			}
 			if entity.Type == "bot_command" {
-				cmdText := pair.text[entity.Offset : entity.Offset+entity.Length]
-				cmdLower := strings.ToLower(cmdText)
-				// Commands addressed to another bot: /cmd@other_bot
-				if atIdx := strings.Index(cmdLower, "@"); atIdx > 0 {
-					target := cmdLower[atIdx+1:]
-					if target != lowerMy {
+				cmdText, ok := telegramEntityText(pair.text, entity)
+				if !ok {
+					continue
+				}
+				for _, target := range extractTelegramCommandTargets(cmdText) {
+					if !strings.EqualFold(target, myUsername) {
 						return true
 					}
 				}
 			}
 		}
+		if hasOtherTelegramHandle(pair.text, myUsername) {
+			return true
+		}
 	}
 	return false
+}
+
+// shouldSkipForeignBotMessageInYield applies Telegram's multi-bot inbound guard.
+// Default behavior skips other bots unless they explicitly target us. When
+// allowBotMessages is enabled, standalone bot messages are allowed through but
+// bot-to-bot reply chains still yield to avoid ping-pong loops.
+func (c *Channel) shouldSkipForeignBotMessageInYield(msg *telego.Message, myUsername string, allowBotMessages bool) bool {
+	if msg == nil || msg.From == nil || !msg.From.IsBot || strings.EqualFold(msg.From.Username, myUsername) {
+		return false
+	}
+	if c.detectMention(msg, myUsername) {
+		return false
+	}
+	if !allowBotMessages {
+		return true
+	}
+	return isReplyToOtherBot(msg, myUsername)
+}
+
+// isReplyToOtherBot returns true when the message replies to a bot other than ours.
+// Used to keep yield-mode bot-to-bot loop protection even when bot messages are allowed.
+func isReplyToOtherBot(msg *telego.Message, myUsername string) bool {
+	if msg == nil || msg.ReplyToMessage == nil || msg.ReplyToMessage.From == nil {
+		return false
+	}
+	replyFrom := msg.ReplyToMessage.From
+	return replyFrom.IsBot && !strings.EqualFold(replyFrom.Username, myUsername)
 }
 
 // isServiceMessage returns true if the Telegram message is a service/system message

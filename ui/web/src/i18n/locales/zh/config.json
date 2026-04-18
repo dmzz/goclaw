@@ -278,6 +278,8 @@
   "channels.dmStreamingHint": "私聊中逐步更新消息",
   "channels.groupStreaming": "群组流式传输",
   "channels.groupStreamingHint": "群聊中逐步更新消息",
+  "channels.allowBotMessages": "允许来自其他机器人的消息",
+  "channels.allowBotMessagesHint": "接受来自其他机器人的群组入站消息。yield 模式仍会抑制机器人对另一个机器人回复所产生的消息，以避免 ping-pong 循环。",
   "channels.streaming": "流式传输",
   "channels.draftTransport": "草稿预览",
   "channels.draftTransportHint": "私聊中静默流式预览（每次编辑无通知）",

@@ -278,6 +278,8 @@
   "channels.dmStreamingHint": "Progressive message updates in DMs",
   "channels.groupStreaming": "Group Streaming",
   "channels.groupStreamingHint": "Progressive message updates in groups",
+  "channels.allowBotMessages": "Allow Messages From Other Bots",
+  "channels.allowBotMessagesHint": "Accept inbound group messages from other bots. Yield mode still suppresses bot-authored replies to another bot to avoid ping-pong loops.",
   "channels.streaming": "Streaming",
   "channels.draftTransport": "Draft Preview",
   "channels.draftTransportHint": "Stealth streaming preview in DMs (no notifications per edit)",
