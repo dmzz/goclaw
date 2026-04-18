@@ -28,7 +28,7 @@ type Channel struct {
 	config            config.TelegramConfig
 	httpClient        *http.Client
 	transport         *http.Transport
-	ipv4Once          sync.Once // guards enableIPv4Only to prevent data race
+	ipv4Once          sync.Once                   // guards enableIPv4Only to prevent data race
 	agentStore        store.AgentStore            // for agent key lookup (nil if not configured)
 	configPermStore   store.ConfigPermissionStore // for group file writer management (nil if not configured)
 	teamStore         store.TeamStore             // for /tasks, /task_detail commands (nil if not configured)
@@ -38,15 +38,16 @@ type Channel struct {
 	typingCtrls       sync.Map                    // localKey string → *typing.Controller
 	reactions         sync.Map                    // localKey string → *StatusReactionController
 	threadIDs         sync.Map                    // localKey string → messageThreadID int (for forum topic routing)
-	mentionMode       string             // "strict" (default) or "yield"
-	pollCancel        context.CancelFunc // cancels the long polling context
-	pollDone          chan struct{}      // closed when polling goroutine exits
-	handlerWg         sync.WaitGroup     // tracks in-flight handler goroutines for graceful shutdown
-	handlerSem        chan struct{}      // bounded semaphore for concurrent handler goroutines
-	pendingDraftID    sync.Map           // localKey string → int (draftID)
-	audioMgr          *audio.Manager    // unified STT via audio.Manager (nil = no STT)
-	writerHealMu      sync.Mutex         // guards writerHealLastTry for /writers self-heal
-	writerHealLastTry map[string]time.Time // key "chatID|userID" → last attempt timestamp
+	mentionMode       string                      // "strict" (default) or "yield"
+	allowBotMessages  bool                        // allow inbound messages from other bots in groups
+	pollCancel        context.CancelFunc          // cancels the long polling context
+	pollDone          chan struct{}               // closed when polling goroutine exits
+	handlerWg         sync.WaitGroup              // tracks in-flight handler goroutines for graceful shutdown
+	handlerSem        chan struct{}               // bounded semaphore for concurrent handler goroutines
+	pendingDraftID    sync.Map                    // localKey string → int (draftID)
+	audioMgr          *audio.Manager              // unified STT via audio.Manager (nil = no STT)
+	writerHealMu      sync.Mutex                  // guards writerHealLastTry for /writers self-heal
+	writerHealLastTry map[string]time.Time        // key "chatID|userID" → last attempt timestamp
 	// pairingService, approvedGroups, pairingDebounce, groupHistory, historyLimit, requireMention
 	// are inherited from channels.BaseChannel.
 }
@@ -157,13 +158,14 @@ func New(cfg config.TelegramConfig, msgBus *bus.MessageBus, pairingSvc store.Pai
 	}
 
 	ch := &Channel{
-		BaseChannel: base,
-		bot:         bot,
-		config:      cfg,
-		httpClient:  httpClient,
-		transport:   transport,
-		mentionMode: mentionMode,
-		audioMgr:    audioMgr,
+		BaseChannel:      base,
+		bot:              bot,
+		config:           cfg,
+		httpClient:       httpClient,
+		transport:        transport,
+		mentionMode:      mentionMode,
+		allowBotMessages: cfg.AllowBotMessages,
+		audioMgr:         audioMgr,
 	}
 	ch.SetPairingService(pairingSvc)
 	ch.SetGroupHistory(channels.MakeHistory(channels.TypeTelegram, nil, base.TenantID()))

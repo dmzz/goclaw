@@ -208,6 +208,86 @@ func TestHasOtherMention_CaptionWithOtherMention(t *testing.T) {
 	}
 }
 
+// --- shouldSkipForeignBotMessageInYield / isReplyToOtherBot ---
+
+func TestShouldSkipForeignBotMessageInYield_DefaultBlocksOtherBots(t *testing.T) {
+	ch := &Channel{}
+	msg := &telego.Message{
+		Text: "hello from bot",
+		From: &telego.User{Username: "otherbot", IsBot: true},
+	}
+	if !ch.shouldSkipForeignBotMessageInYield(msg, "mybot", false) {
+		t.Error("foreign bot should be skipped by default in yield mode")
+	}
+}
+
+func TestShouldSkipForeignBotMessageInYield_AllowsExplicitMention(t *testing.T) {
+	ch := &Channel{}
+	msg := &telego.Message{
+		Text: "@mybot hello",
+		From: &telego.User{Username: "otherbot", IsBot: true},
+		Entities: []telego.MessageEntity{
+			{Type: "mention", Offset: 0, Length: 6},
+		},
+	}
+	if ch.shouldSkipForeignBotMessageInYield(msg, "mybot", false) {
+		t.Error("explicit mention should not be skipped")
+	}
+}
+
+func TestShouldSkipForeignBotMessageInYield_AllowsStandaloneBotWhenEnabled(t *testing.T) {
+	ch := &Channel{}
+	msg := &telego.Message{
+		Text: "status update",
+		From: &telego.User{Username: "otherbot", IsBot: true},
+	}
+	if ch.shouldSkipForeignBotMessageInYield(msg, "mybot", true) {
+		t.Error("standalone bot message should be allowed when allow_bot_messages is enabled")
+	}
+}
+
+func TestShouldSkipForeignBotMessageInYield_KeepsReplyLoopGuardWhenEnabled(t *testing.T) {
+	ch := &Channel{}
+	msg := &telego.Message{
+		Text: "follow-up from bot",
+		From: &telego.User{Username: "otherbot", IsBot: true},
+		ReplyToMessage: &telego.Message{
+			From: &telego.User{Username: "thirdbot", IsBot: true},
+		},
+	}
+	if !ch.shouldSkipForeignBotMessageInYield(msg, "mybot", true) {
+		t.Error("bot-authored reply to another bot should still be skipped to avoid loops")
+	}
+}
+
+func TestShouldSkipForeignBotMessageInYield_AllowsReplyToOwnBotWhenEnabled(t *testing.T) {
+	ch := &Channel{}
+	msg := &telego.Message{
+		Text: "replying to you",
+		From: &telego.User{Username: "otherbot", IsBot: true},
+		ReplyToMessage: &telego.Message{
+			From: &telego.User{Username: "mybot", IsBot: true},
+		},
+	}
+	if ch.shouldSkipForeignBotMessageInYield(msg, "mybot", true) {
+		t.Error("reply to our own bot should not be skipped")
+	}
+}
+
+func TestIsReplyToOtherBot(t *testing.T) {
+	msg := &telego.Message{
+		ReplyToMessage: &telego.Message{
+			From: &telego.User{Username: "otherbot", IsBot: true},
+		},
+	}
+	if !isReplyToOtherBot(msg, "mybot") {
+		t.Error("isReplyToOtherBot should detect replies to a different bot")
+	}
+	if isReplyToOtherBot(msg, "otherbot") {
+		t.Error("isReplyToOtherBot should ignore replies to our own bot")
+	}
+}
+
 // --- isServiceMessage ---
 
 func TestIsServiceMessage_WithText(t *testing.T) {

@@ -1783,8 +1783,8 @@ func TestParseTTL_ValidInputs(t *testing.T) {
 		{"5m", 5 * time.Minute},
 		{"30s", 30 * time.Second},
 		{"1h30m", 90 * time.Minute},
-		{"bogus", 5 * time.Minute},  // invalid → fallback
-		{"-1m", 5 * time.Minute},    // negative → fallback
+		{"bogus", 5 * time.Minute}, // invalid → fallback
+		{"-1m", 5 * time.Minute},   // negative → fallback
 	}
 	for _, tc := range cases {
 		got := parseTTL(tc.in)
@@ -1918,5 +1918,45 @@ func TestPruneStage_CacheTtlGate_MarkTouchedOnlyOnMutation(t *testing.T) {
 	}
 	if atomic.LoadInt32(&touchCalled) != 0 {
 		t.Error("MarkCacheTouched should NOT be called when prune returns no mutation")
+	}
+}
+
+func TestPruneStage_CompactionPreservesPendingToolCall(t *testing.T) {
+	t.Parallel()
+
+	deps := &PipelineDeps{
+		Config:       PipelineConfig{ContextWindow: 1000, MaxTokens: 100},
+		TokenCounter: &mockTokenCounter{countPerMessage: 250},
+		CompactMessages: func(_ context.Context, msgs []providers.Message, _ string) ([]providers.Message, error) {
+			return []providers.Message{{Role: "user", Content: "compacted"}}, nil
+		},
+	}
+	stage := NewPruneStage(deps, nil)
+	state := defaultState()
+	state.Messages.SetHistory([]providers.Message{
+		{Role: "user", Content: "h1"},
+		{Role: "assistant", Content: "h2"},
+		{Role: "user", Content: "h3"},
+	})
+	state.Messages.AppendPending(providers.Message{
+		Role: "assistant",
+		ToolCalls: []providers.ToolCall{
+			{ID: "call_123", Name: "write_file", Arguments: map[string]any{"path": "/tmp/x"}},
+		},
+	})
+
+	if err := stage.Execute(context.Background(), state); err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+
+	pending := state.Messages.Pending()
+	if len(pending) != 1 {
+		t.Fatalf("pending len = %d, want 1", len(pending))
+	}
+	if len(pending[0].ToolCalls) != 1 || pending[0].ToolCalls[0].ID != "call_123" {
+		t.Fatalf("pending tool call = %#v, want call_123 preserved", pending[0].ToolCalls)
+	}
+	if got := state.Messages.History(); len(got) != 1 || got[0].Content != "compacted" {
+		t.Fatalf("history after compaction = %#v, want compacted history", got)
 	}
 }

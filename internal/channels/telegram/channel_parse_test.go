@@ -115,3 +115,21 @@ func TestEffectiveRequireMention_Override(t *testing.T) {
 		t.Error("effectiveRequireMention should return override false when set")
 	}
 }
+
+func TestEffectiveAllowBotMessages_Override(t *testing.T) {
+	b := true
+	r := resolvedTopicConfig{allowBotMessages: &b}
+	if !r.effectiveAllowBotMessages(false) {
+		t.Error("effectiveAllowBotMessages should return override true when set")
+	}
+}
+
+func TestEffectiveAllowBotMessages_FallbackToDefault(t *testing.T) {
+	r := resolvedTopicConfig{}
+	if !r.effectiveAllowBotMessages(true) {
+		t.Error("effectiveAllowBotMessages should return default true when unset")
+	}
+	if r.effectiveAllowBotMessages(false) {
+		t.Error("effectiveAllowBotMessages should return default false when unset")
+	}
+}

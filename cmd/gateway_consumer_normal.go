@@ -254,6 +254,9 @@ func processNormalMessage(
 		}
 		extraPrompt += tsp
 	}
+	if msg.Channel == "telegram" && peerKind == string(sessions.PeerGroup) {
+		extraPrompt = augmentTelegramGroupPrompt(extraPrompt)
+	}
 
 	// Per-topic skill filter override (from group/topic config hierarchy).
 	var skillFilter []string

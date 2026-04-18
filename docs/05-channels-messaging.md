@@ -185,6 +185,7 @@ The Telegram channel uses long polling via the `telego` library (Telegram Bot AP
 - **Cancel commands**: `/stop` and `/stopall` intercepted before the 800ms debouncer. See [08-scheduling-cron.md](./08-scheduling-cron.md) for details.
 - **Concurrent group support**: Group sessions support up to 3 concurrent agent runs.
 - **Bot reply as implicit mention**: Replying to a bot message in a group counts as mentioning the bot.
+- **Optional bot-to-bot intake**: `allow_bot_messages` lets Telegram groups accept inbound messages from other bots. In `yield` mode, bot-authored replies to another bot are still suppressed to avoid ping-pong loops.
 
 ### Formatting Pipeline
 
