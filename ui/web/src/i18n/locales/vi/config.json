@@ -278,6 +278,8 @@
   "channels.dmStreamingHint": "Cập nhật tin nhắn liên tục trong DM",
   "channels.groupStreaming": "Streaming nhóm",
   "channels.groupStreamingHint": "Cập nhật tin nhắn liên tục trong nhóm",
+  "channels.allowBotMessages": "Cho phép tin nhắn từ bot khác",
+  "channels.allowBotMessagesHint": "Chấp nhận tin nhắn nhóm đến từ các bot khác. Chế độ yield vẫn bỏ qua trả lời do bot viết để đáp lại bot khác nhằm tránh vòng lặp ping-pong.",
   "channels.streaming": "Streaming",
   "channels.draftTransport": "Xem trước nháp",
   "channels.draftTransportHint": "Xem trước streaming trong DM (không thông báo mỗi lần chỉnh sửa)",

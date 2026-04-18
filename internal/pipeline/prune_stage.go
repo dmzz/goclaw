@@ -26,7 +26,7 @@ func NewPruneStage(deps *PipelineDeps, memFlush *MemoryFlushStage) *PruneStage {
 	return &PruneStage{deps: deps, memoryFlush: memFlush, result: Continue}
 }
 
-func (s *PruneStage) Name() string       { return "prune" }
+func (s *PruneStage) Name() string        { return "prune" }
 func (s *PruneStage) Result() StageResult { return s.result }
 
 // defaultCachePruneTTL is used when cfg.TTL is empty or invalid.
@@ -184,7 +184,14 @@ func (s *PruneStage) Execute(ctx context.Context, state *RunState) error {
 	if err != nil {
 		return fmt.Errorf("compact messages: %w", err)
 	}
+	// Preserve current-iteration pending messages across compaction. ThinkStage may
+	// have already appended the current assistant tool_call into pending, and
+	// ToolStage still needs that call in context to pair subsequent tool results.
+	pending := append([]providers.Message(nil), state.Messages.Pending()...)
 	state.Messages.ReplaceHistory(compacted)
+	for _, msg := range pending {
+		state.Messages.AppendPending(msg)
+	}
 	state.Prune.MidLoopCompacted = true
 	state.Compact.CompactionCount++
 	state.Compact.MemoryFlushedThisCycle = false // reset for next cycle

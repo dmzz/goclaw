@@ -5,6 +5,7 @@ export interface TelegramGroupConfigValues {
   group_policy?: string;
   require_mention?: boolean;
   mention_mode?: string;
+  allow_bot_messages?: boolean;
   enabled?: boolean;
   allow_from?: string[];
   skills?: string[];

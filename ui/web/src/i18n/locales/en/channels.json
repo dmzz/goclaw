@@ -241,6 +241,10 @@
       "label": "Group Response Behavior",
       "help": "How the bot decides when to respond in groups with multiple bots."
     },
+    "allow_bot_messages": {
+      "label": "Allow Messages From Other Bots",
+      "help": "Allow inbound messages from other bots in groups. Yield mode still suppresses bot-authored replies to another bot to avoid ping-pong loops."
+    },
     "history_limit": {
       "label": "Group History Limit",
       "help": "Max pending group messages for context (0 = disabled)"

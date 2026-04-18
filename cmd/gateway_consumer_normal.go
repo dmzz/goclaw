@@ -254,6 +254,9 @@ func processNormalMessage(
 		}
 		extraPrompt += tsp
 	}
+	if msg.Channel == "telegram" && peerKind == string(sessions.PeerGroup) {
+		extraPrompt = augmentTelegramGroupPrompt(extraPrompt)
+	}
 
 	// Append channel-provided self-identity hint (e.g. "You are @bot (Name) on Telegram").
 	// Prevents the LLM from treating its own platform handle as another bot when users

@@ -252,13 +252,15 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 	//   "yield": respond to all messages UNLESS another bot/user is @mentioned (and not us)
 	//            — enables "shared group" where all bots listen, but yield when someone is called by name
 	mentionMode := topicCfg.effectiveMentionMode(c.mentionMode)
+	allowBotMessages := topicCfg.effectiveAllowBotMessages(c.allowBotMessages)
 	if isGroup && (topicCfg.effectiveRequireMention(c.RequireMention()) || mentionMode == "yield") {
 		botUsername := c.bot.Username()
 
-		// In yield mode, skip messages from other bots to prevent infinite loops.
-		// Bot A responds → Bot B sees it as "no specific mention" → responds → loop.
-		// Only skip when our bot is NOT explicitly mentioned — allow cross-bot @commands.
-		if mentionMode == "yield" && user.IsBot && user.Username != botUsername && !c.detectMention(message, botUsername) {
+		// In yield mode, gate other bots to prevent ping-pong loops.
+		// With allow_bot_messages disabled (default), skip all foreign bots unless they
+		// explicitly target us. With the flag enabled, allow standalone bot messages but
+		// still skip bot-authored replies to another bot unless they target us explicitly.
+		if mentionMode == "yield" && c.shouldSkipForeignBotMessageInYield(message, botUsername, allowBotMessages) {
 			// Respect pairing guard — don't record history in unpaired groups.
 			if topicCfg.groupPolicy == "pairing" && c.PairingService() != nil {
 				if !c.IsGroupApproved(chatIDStr) {
@@ -577,12 +579,12 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 	// user sees typing indicator → first content appears directly.
 
 	metadata := map[string]string{
-		"message_id": fmt.Sprintf("%d", message.MessageID),
-		"user_id":    fmt.Sprintf("%d", user.ID),
+		"message_id":       fmt.Sprintf("%d", message.MessageID),
+		"user_id":          fmt.Sprintf("%d", user.ID),
 		tools.MetaUsername: user.Username,
-		"first_name": user.FirstName,
-		"is_group":   fmt.Sprintf("%t", isGroup),
-		"local_key":  localKey,
+		"first_name":       user.FirstName,
+		"is_group":         fmt.Sprintf("%t", isGroup),
+		"local_key":        localKey,
 	}
 	if message.Chat.Title != "" {
 		metadata[tools.MetaChatTitle] = message.Chat.Title

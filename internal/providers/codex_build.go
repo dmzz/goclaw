@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
@@ -23,6 +24,7 @@ func (p *CodexProvider) buildRequestBody(req ChatRequest, stream bool) map[strin
 
 	var instructions string
 	var input []any
+	seenFunctionCalls := make(map[string]struct{})
 
 	for _, m := range req.Messages {
 		switch m.Role {
@@ -64,6 +66,7 @@ func (p *CodexProvider) buildRequestBody(req ChatRequest, stream bool) map[strin
 				for _, tc := range m.ToolCalls {
 					argsJSON, _ := json.Marshal(tc.Arguments)
 					callID := toFcID(tc.ID)
+					seenFunctionCalls[callID] = struct{}{}
 					input = append(input, map[string]any{
 						"type":      "function_call",
 						"id":        callID,
@@ -88,9 +91,15 @@ func (p *CodexProvider) buildRequestBody(req ChatRequest, stream bool) map[strin
 			}
 
 		case "tool":
+			callID := toFcID(m.ToolCallID)
+			if _, ok := seenFunctionCalls[callID]; !ok {
+				slog.Warn("codex: dropping orphaned function_call_output",
+					"call_id", callID)
+				continue
+			}
 			input = append(input, map[string]any{
 				"type":    "function_call_output",
-				"call_id": toFcID(m.ToolCallID),
+				"call_id": callID,
 				"output":  m.Content,
 			})
 		}

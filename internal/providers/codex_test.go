@@ -210,6 +210,34 @@ func TestCodexProviderBuildRequestBodyToolCallMessages(t *testing.T) {
 	}
 }
 
+func TestCodexProviderBuildRequestBody_DropsOrphanToolOutput(t *testing.T) {
+	p := NewCodexProvider("test", &staticTokenSource{token: "test"}, "", "gpt-4o")
+
+	req := ChatRequest{
+		Messages: []Message{
+			{Role: "user", Content: "Hello"},
+			{Role: "tool", ToolCallID: "call_orphan", Content: `{"ok":true}`},
+		},
+	}
+
+	body := p.buildRequestBody(req, false)
+
+	input, ok := body["input"].([]any)
+	if !ok {
+		t.Fatalf("input is not []interface{}: %T", body["input"])
+	}
+	if len(input) != 1 {
+		t.Fatalf("input length = %d, want 1 (orphan tool output should be skipped)", len(input))
+	}
+	msg, ok := input[0].(map[string]any)
+	if !ok {
+		t.Fatalf("input[0] is not map: %T", input[0])
+	}
+	if msg["role"] != "user" {
+		t.Fatalf("input[0] role = %v, want user", msg["role"])
+	}
+}
+
 func TestCodexProviderBuildRequestBodyThinking(t *testing.T) {
 	p := NewCodexProvider("test", &staticTokenSource{token: "test"}, "", "gpt-4o")
 
