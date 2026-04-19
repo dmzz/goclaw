@@ -7,6 +7,7 @@ import (
 	"github.com/nextlevelbuilder/goclaw/internal/channels/telegram"
 )
 
+// LOCAL FIX START: telegram multi-bot prompt augmentation
 func augmentTelegramGroupPrompt(extraPrompt string) string {
 	lines := []string{
 		"- In Telegram groups with multiple bots, explicitly mention the target bot as @username when you want that bot to act.",
@@ -24,3 +25,5 @@ func augmentTelegramGroupPrompt(extraPrompt string) string {
 	}
 	return extraPrompt + "\n\n" + block
 }
+
+// LOCAL FIX END: telegram multi-bot prompt augmentation

@@ -5,7 +5,9 @@ export interface TelegramGroupConfigValues {
   group_policy?: string;
   require_mention?: boolean;
   mention_mode?: string;
+  // LOCAL FIX START: telegram allow_bot_messages UI exposure
   allow_bot_messages?: boolean;
+  // LOCAL FIX END: telegram allow_bot_messages UI exposure
   enabled?: boolean;
   allow_from?: string[];
   skills?: string[];

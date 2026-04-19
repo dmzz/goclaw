@@ -7,6 +7,7 @@ import (
 	"github.com/mymmrac/telego"
 )
 
+// LOCAL FIX START: telegram unicode-safe mention parsing tests
 func TestSliceByUTF16CodeUnits_CyrillicPrefix(t *testing.T) {
 	got, ok := sliceByUTF16CodeUnits("Привет @otherbot", 7, 9)
 	if !ok {
@@ -83,3 +84,5 @@ func TestHasOtherMention_UnicodePrefixEntity(t *testing.T) {
 		t.Fatal("hasOtherMention should detect another bot after unicode prefix")
 	}
 }
+
+// LOCAL FIX END: telegram unicode-safe mention parsing tests

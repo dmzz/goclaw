@@ -40,15 +40,17 @@ type Channel struct {
 	threadIDs         sync.Map                    // localKey string → messageThreadID int (for forum topic routing)
 	mentionMode       string                      // "strict" (default) or "yield"
 	botDisplayName    string                      // bot's first_name from GetMe (e.g. "ViệtBot"); captured once at Start
-	allowBotMessages  bool                        // allow inbound messages from other bots in groups
-	pollCancel        context.CancelFunc          // cancels the long polling context
-	pollDone          chan struct{}               // closed when polling goroutine exits
-	handlerWg         sync.WaitGroup              // tracks in-flight handler goroutines for graceful shutdown
-	handlerSem        chan struct{}               // bounded semaphore for concurrent handler goroutines
-	pendingDraftID    sync.Map                    // localKey string → int (draftID)
-	audioMgr          *audio.Manager              // unified STT via audio.Manager (nil = no STT)
-	writerHealMu      sync.Mutex                  // guards writerHealLastTry for /writers self-heal
-	writerHealLastTry map[string]time.Time        // key "chatID|userID" → last attempt timestamp
+	// LOCAL FIX START: telegram allow_bot_messages runtime state
+	allowBotMessages bool // allow inbound messages from other bots in groups
+	// LOCAL FIX END: telegram allow_bot_messages runtime state
+	pollCancel        context.CancelFunc   // cancels the long polling context
+	pollDone          chan struct{}        // closed when polling goroutine exits
+	handlerWg         sync.WaitGroup       // tracks in-flight handler goroutines for graceful shutdown
+	handlerSem        chan struct{}        // bounded semaphore for concurrent handler goroutines
+	pendingDraftID    sync.Map             // localKey string → int (draftID)
+	audioMgr          *audio.Manager       // unified STT via audio.Manager (nil = no STT)
+	writerHealMu      sync.Mutex           // guards writerHealLastTry for /writers self-heal
+	writerHealLastTry map[string]time.Time // key "chatID|userID" → last attempt timestamp
 	// pairingService, approvedGroups, pairingDebounce, groupHistory, historyLimit, requireMention
 	// are inherited from channels.BaseChannel.
 }
@@ -159,14 +161,16 @@ func New(cfg config.TelegramConfig, msgBus *bus.MessageBus, pairingSvc store.Pai
 	}
 
 	ch := &Channel{
-		BaseChannel:      base,
-		bot:              bot,
-		config:           cfg,
-		httpClient:       httpClient,
-		transport:        transport,
-		mentionMode:      mentionMode,
+		BaseChannel: base,
+		bot:         bot,
+		config:      cfg,
+		httpClient:  httpClient,
+		transport:   transport,
+		mentionMode: mentionMode,
+		// LOCAL FIX START: telegram allow_bot_messages runtime state
 		allowBotMessages: cfg.AllowBotMessages,
-		audioMgr:         audioMgr,
+		// LOCAL FIX END: telegram allow_bot_messages runtime state
+		audioMgr: audioMgr,
 	}
 	ch.SetPairingService(pairingSvc)
 	ch.SetGroupHistory(channels.MakeHistory(channels.TypeTelegram, nil, base.TenantID()))

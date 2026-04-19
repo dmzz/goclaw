@@ -24,26 +24,28 @@ type ChannelsConfig struct {
 }
 
 type TelegramConfig struct {
-	Enabled          bool                `json:"enabled"`
-	Token            string              `json:"token"`
-	Proxy            string              `json:"proxy,omitempty"`
-	APIServer        string              `json:"api_server,omitempty"` // custom Telegram Bot API server URL (e.g. "http://localhost:8081")
-	AllowFrom        FlexibleStringSlice `json:"allow_from"`
-	DMPolicy         string              `json:"dm_policy,omitempty"`          // "pairing" (default), "allowlist", "open", "disabled"
-	GroupPolicy      string              `json:"group_policy,omitempty"`       // "open" (default), "allowlist", "disabled"
-	RequireMention   *bool               `json:"require_mention,omitempty"`    // require @bot mention in groups (default true)
-	MentionMode      string              `json:"mention_mode,omitempty"`       // "strict" (default) = only respond when mentioned; "yield" = respond unless another bot is mentioned
-	AllowBotMessages bool                `json:"allow_bot_messages,omitempty"` // allow inbound messages from other bots in groups (default false)
-	HistoryLimit     int                 `json:"history_limit,omitempty"`      // max pending group messages for context (default 50, 0=disabled)
-	DMStream         *bool               `json:"dm_stream,omitempty"`          // enable streaming for DMs (default false) — edits placeholder progressively
-	GroupStream      *bool               `json:"group_stream,omitempty"`       // enable streaming for groups (default false) — sends new message, edits progressively
-	DraftTransport   *bool               `json:"draft_transport,omitempty"`    // use sendMessageDraft for DM streaming (default true) — stealth preview, no notifications per edit
-	ReasoningStream  *bool               `json:"reasoning_stream,omitempty"`   // show reasoning as separate message when provider emits thinking events (default true)
-	ReactionLevel    string              `json:"reaction_level,omitempty"`     // "off" (default), "minimal", "full" — status emoji reactions
-	MediaMaxBytes    int64               `json:"media_max_bytes,omitempty"`    // max media download size in bytes (default 20MB)
-	LinkPreview      *bool               `json:"link_preview,omitempty"`       // enable URL previews in messages (default true)
-	BlockReply       *bool               `json:"block_reply,omitempty"`        // override gateway block_reply (nil = inherit)
-	ForceIPv4        bool                `json:"force_ipv4,omitempty"`         // force IPv4 for all Telegram API requests (use when IPv6 routing is broken)
+	Enabled        bool                `json:"enabled"`
+	Token          string              `json:"token"`
+	Proxy          string              `json:"proxy,omitempty"`
+	APIServer      string              `json:"api_server,omitempty"` // custom Telegram Bot API server URL (e.g. "http://localhost:8081")
+	AllowFrom      FlexibleStringSlice `json:"allow_from"`
+	DMPolicy       string              `json:"dm_policy,omitempty"`       // "pairing" (default), "allowlist", "open", "disabled"
+	GroupPolicy    string              `json:"group_policy,omitempty"`    // "open" (default), "allowlist", "disabled"
+	RequireMention *bool               `json:"require_mention,omitempty"` // require @bot mention in groups (default true)
+	MentionMode    string              `json:"mention_mode,omitempty"`    // "strict" (default) = only respond when mentioned; "yield" = respond unless another bot is mentioned
+	// LOCAL FIX START: telegram allow_bot_messages config schema
+	AllowBotMessages bool `json:"allow_bot_messages,omitempty"` // allow inbound messages from other bots in groups (default false)
+	// LOCAL FIX END: telegram allow_bot_messages config schema
+	HistoryLimit    int    `json:"history_limit,omitempty"`    // max pending group messages for context (default 50, 0=disabled)
+	DMStream        *bool  `json:"dm_stream,omitempty"`        // enable streaming for DMs (default false) — edits placeholder progressively
+	GroupStream     *bool  `json:"group_stream,omitempty"`     // enable streaming for groups (default false) — sends new message, edits progressively
+	DraftTransport  *bool  `json:"draft_transport,omitempty"`  // use sendMessageDraft for DM streaming (default true) — stealth preview, no notifications per edit
+	ReasoningStream *bool  `json:"reasoning_stream,omitempty"` // show reasoning as separate message when provider emits thinking events (default true)
+	ReactionLevel   string `json:"reaction_level,omitempty"`   // "off" (default), "minimal", "full" — status emoji reactions
+	MediaMaxBytes   int64  `json:"media_max_bytes,omitempty"`  // max media download size in bytes (default 20MB)
+	LinkPreview     *bool  `json:"link_preview,omitempty"`     // enable URL previews in messages (default true)
+	BlockReply      *bool  `json:"block_reply,omitempty"`      // override gateway block_reply (nil = inherit)
+	ForceIPv4       bool   `json:"force_ipv4,omitempty"`       // force IPv4 for all Telegram API requests (use when IPv6 routing is broken)
 
 	// Optional STT (Speech-to-Text) pipeline for voice/audio inbound messages.
 	// When stt_proxy_url is set, audio/voice messages are transcribed before being forwarded to the agent.
@@ -70,31 +72,35 @@ type TelegramConfig struct {
 // TelegramGroupConfig defines per-group overrides for a Telegram channel.
 // Matching TS TelegramGroupConfig in src/config/types.telegram.ts.
 type TelegramGroupConfig struct {
-	GroupPolicy      string                          `json:"group_policy,omitempty"`       // override group policy for this group
-	RequireMention   *bool                           `json:"require_mention,omitempty"`    // override require_mention for this group
-	MentionMode      string                          `json:"mention_mode,omitempty"`       // override mention_mode for this group
-	AllowBotMessages *bool                           `json:"allow_bot_messages,omitempty"` // override allow_bot_messages for this group
-	AllowFrom        FlexibleStringSlice             `json:"allow_from,omitempty"`         // override allow_from for this group
-	Enabled          *bool                           `json:"enabled,omitempty"`            // disable bot for this group (default: true)
-	Skills           []string                        `json:"skills,omitempty"`             // skill whitelist (nil = all, [] = none)
-	Tools            []string                        `json:"tools,omitempty"`              // tool allow list (nil = all, supports "group:xxx")
-	SystemPrompt     string                          `json:"system_prompt,omitempty"`      // extra system prompt for this group
-	Topics           map[string]*TelegramTopicConfig `json:"topics,omitempty"`             // per-topic overrides (key: thread ID string)
-	Quota            *QuotaWindow                    `json:"quota,omitempty"`              // per-group quota override
+	GroupPolicy    string `json:"group_policy,omitempty"`    // override group policy for this group
+	RequireMention *bool  `json:"require_mention,omitempty"` // override require_mention for this group
+	MentionMode    string `json:"mention_mode,omitempty"`    // override mention_mode for this group
+	// LOCAL FIX START: telegram allow_bot_messages config schema
+	AllowBotMessages *bool `json:"allow_bot_messages,omitempty"` // override allow_bot_messages for this group
+	// LOCAL FIX END: telegram allow_bot_messages config schema
+	AllowFrom    FlexibleStringSlice             `json:"allow_from,omitempty"`    // override allow_from for this group
+	Enabled      *bool                           `json:"enabled,omitempty"`       // disable bot for this group (default: true)
+	Skills       []string                        `json:"skills,omitempty"`        // skill whitelist (nil = all, [] = none)
+	Tools        []string                        `json:"tools,omitempty"`         // tool allow list (nil = all, supports "group:xxx")
+	SystemPrompt string                          `json:"system_prompt,omitempty"` // extra system prompt for this group
+	Topics       map[string]*TelegramTopicConfig `json:"topics,omitempty"`        // per-topic overrides (key: thread ID string)
+	Quota        *QuotaWindow                    `json:"quota,omitempty"`         // per-group quota override
 }
 
 // TelegramTopicConfig defines per-topic overrides within a Telegram group.
 // Matching TS TelegramTopicConfig in src/config/types.telegram.ts.
 type TelegramTopicConfig struct {
-	RequireMention   *bool               `json:"require_mention,omitempty"`
-	MentionMode      string              `json:"mention_mode,omitempty"`
-	AllowBotMessages *bool               `json:"allow_bot_messages,omitempty"`
-	GroupPolicy      string              `json:"group_policy,omitempty"`
-	Skills           []string            `json:"skills,omitempty"`
-	Tools            []string            `json:"tools,omitempty"` // tool allow list (nil = inherit, supports "group:xxx")
-	Enabled          *bool               `json:"enabled,omitempty"`
-	AllowFrom        FlexibleStringSlice `json:"allow_from,omitempty"`
-	SystemPrompt     string              `json:"system_prompt,omitempty"`
+	RequireMention *bool  `json:"require_mention,omitempty"`
+	MentionMode    string `json:"mention_mode,omitempty"`
+	// LOCAL FIX START: telegram allow_bot_messages config schema
+	AllowBotMessages *bool `json:"allow_bot_messages,omitempty"`
+	// LOCAL FIX END: telegram allow_bot_messages config schema
+	GroupPolicy  string              `json:"group_policy,omitempty"`
+	Skills       []string            `json:"skills,omitempty"`
+	Tools        []string            `json:"tools,omitempty"` // tool allow list (nil = inherit, supports "group:xxx")
+	Enabled      *bool               `json:"enabled,omitempty"`
+	AllowFrom    FlexibleStringSlice `json:"allow_from,omitempty"`
+	SystemPrompt string              `json:"system_prompt,omitempty"`
 }
 
 type DiscordConfig struct {
@@ -433,7 +439,6 @@ type ToolPolicySpec struct {
 	ByProvider     map[string]*ToolPolicySpec `json:"byProvider,omitempty"`
 	ToolCallPrefix string                     `json:"toolCallPrefix,omitempty"` // prefix to strip from model's tool call names before registry lookup
 }
-
 
 // SessionsConfig controls session behavior.
 // Matching TS src/config/sessions/types.ts + src/config/types.base.ts.

@@ -9,6 +9,7 @@ import (
 //go:fix inline
 func boolPtr(b bool) *bool { return &b }
 
+// LOCAL FIX START: telegram allow_bot_messages topic/group override tests
 func TestResolveTopicConfig_Defaults(t *testing.T) {
 	cfg := config.TelegramConfig{
 		GroupPolicy:      "open",
@@ -143,6 +144,8 @@ func TestResolveTopicConfig_TopicOverridesGroup(t *testing.T) {
 		t.Errorf("systemPrompt = %q, want %q", result.systemPrompt, expected)
 	}
 }
+
+// LOCAL FIX END: telegram allow_bot_messages topic/group override tests
 
 func TestResolveTopicConfig_TopicSystemPromptConcatenation(t *testing.T) {
 	cfg := config.TelegramConfig{

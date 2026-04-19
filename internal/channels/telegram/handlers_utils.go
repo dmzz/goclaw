@@ -41,6 +41,7 @@ func stripBotMention(text, botUsername string) string {
 	return strings.TrimSpace(regexp.MustCompile(pattern).ReplaceAllString(text, "$1"))
 }
 
+// LOCAL FIX START: telegram multi-bot mention handling
 // detectMention checks if a Telegram message mentions the bot.
 // Checks both msg.Text/Entities (text messages) and msg.Caption/CaptionEntities (photo/media messages).
 func (c *Channel) detectMention(msg *telego.Message, botUsername string) bool {
@@ -157,6 +158,8 @@ func isReplyToOtherBot(msg *telego.Message, myUsername string) bool {
 	replyFrom := msg.ReplyToMessage.From
 	return replyFrom.IsBot && !strings.EqualFold(replyFrom.Username, myUsername)
 }
+
+// LOCAL FIX END: telegram multi-bot mention handling
 
 // isServiceMessage returns true if the Telegram message is a service/system message
 // (member added/removed, title changed, pinned, etc.) rather than a user-sent message.

@@ -254,9 +254,11 @@ func processNormalMessage(
 		}
 		extraPrompt += tsp
 	}
+	// LOCAL FIX START: telegram multi-bot prompt augmentation
 	if msg.Channel == "telegram" && peerKind == string(sessions.PeerGroup) {
 		extraPrompt = augmentTelegramGroupPrompt(extraPrompt)
 	}
+	// LOCAL FIX END: telegram multi-bot prompt augmentation
 
 	// Append channel-provided self-identity hint (e.g. "You are @bot (Name) on Telegram").
 	// Prevents the LLM from treating its own platform handle as another bot when users

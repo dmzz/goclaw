@@ -24,7 +24,9 @@ func (p *CodexProvider) buildRequestBody(req ChatRequest, stream bool) map[strin
 
 	var instructions string
 	var input []any
+	// LOCAL FIX START: drop orphaned Responses API function_call_output items
 	seenFunctionCalls := make(map[string]struct{})
+	// LOCAL FIX END: drop orphaned Responses API function_call_output items
 
 	for _, m := range req.Messages {
 		switch m.Role {
@@ -66,7 +68,9 @@ func (p *CodexProvider) buildRequestBody(req ChatRequest, stream bool) map[strin
 				for _, tc := range m.ToolCalls {
 					argsJSON, _ := json.Marshal(tc.Arguments)
 					callID := toFcID(tc.ID)
+					// LOCAL FIX START: drop orphaned Responses API function_call_output items
 					seenFunctionCalls[callID] = struct{}{}
+					// LOCAL FIX END: drop orphaned Responses API function_call_output items
 					input = append(input, map[string]any{
 						"type":      "function_call",
 						"id":        callID,
@@ -92,11 +96,13 @@ func (p *CodexProvider) buildRequestBody(req ChatRequest, stream bool) map[strin
 
 		case "tool":
 			callID := toFcID(m.ToolCallID)
+			// LOCAL FIX START: drop orphaned Responses API function_call_output items
 			if _, ok := seenFunctionCalls[callID]; !ok {
 				slog.Warn("codex: dropping orphaned function_call_output",
 					"call_id", callID)
 				continue
 			}
+			// LOCAL FIX END: drop orphaned Responses API function_call_output items
 			input = append(input, map[string]any{
 				"type":    "function_call_output",
 				"call_id": callID,

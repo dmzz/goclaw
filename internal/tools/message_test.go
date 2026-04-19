@@ -507,6 +507,7 @@ func TestMessageToolNumericTargetUsesSendPath(t *testing.T) {
 	}
 }
 
+// LOCAL FIX START: telegram current-chat target fallback test
 func TestMessageToolTelegramInvalidTargetFallsBackToCurrentChat(t *testing.T) {
 	workspace := t.TempDir()
 	workspaceCanonical, _ := filepath.EvalSymlinks(workspace)
@@ -547,6 +548,8 @@ func TestMessageToolTelegramInvalidTargetFallsBackToCurrentChat(t *testing.T) {
 		t.Fatalf("unexpected outbound media: %+v", out.Media)
 	}
 }
+
+// LOCAL FIX END: telegram current-chat target fallback test
 
 func TestArgString(t *testing.T) {
 	tests := []struct {
