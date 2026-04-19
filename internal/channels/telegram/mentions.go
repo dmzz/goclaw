@@ -7,6 +7,7 @@ import (
 	"github.com/mymmrac/telego"
 )
 
+// LOCAL FIX START: telegram unicode-safe mention parsing
 var (
 	telegramMentionPattern          = regexp.MustCompile(`(^|[^A-Za-z0-9_])(@[A-Za-z][A-Za-z0-9_]{4,31})([^A-Za-z0-9_]|$)`)
 	telegramBotCommandTargetPattern = regexp.MustCompile(`(^|[^A-Za-z0-9_])/[A-Za-z0-9_]+@([A-Za-z][A-Za-z0-9_]{4,31})([^A-Za-z0-9_]|$)`)
@@ -143,3 +144,5 @@ func sliceByUTF16CodeUnits(text string, offset, length int) (string, bool) {
 
 	return text[startByte:endByte], true
 }
+
+// LOCAL FIX END: telegram unicode-safe mention parsing

@@ -252,7 +252,9 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 	//   "yield": respond to all messages UNLESS another bot/user is @mentioned (and not us)
 	//            — enables "shared group" where all bots listen, but yield when someone is called by name
 	mentionMode := topicCfg.effectiveMentionMode(c.mentionMode)
+	// LOCAL FIX START: telegram allow_bot_messages yield-mode guard
 	allowBotMessages := topicCfg.effectiveAllowBotMessages(c.allowBotMessages)
+	// LOCAL FIX END: telegram allow_bot_messages yield-mode guard
 	if isGroup && (topicCfg.effectiveRequireMention(c.RequireMention()) || mentionMode == "yield") {
 		botUsername := c.bot.Username()
 
@@ -260,6 +262,7 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 		// With allow_bot_messages disabled (default), skip all foreign bots unless they
 		// explicitly target us. With the flag enabled, allow standalone bot messages but
 		// still skip bot-authored replies to another bot unless they target us explicitly.
+		// LOCAL FIX START: telegram allow_bot_messages yield-mode guard
 		if mentionMode == "yield" && c.shouldSkipForeignBotMessageInYield(message, botUsername, allowBotMessages) {
 			// Respect pairing guard — don't record history in unpaired groups.
 			if topicCfg.groupPolicy == "pairing" && c.PairingService() != nil {
@@ -288,6 +291,7 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 			}, c.HistoryLimit())
 			return
 		}
+		// LOCAL FIX END: telegram allow_bot_messages yield-mode guard
 
 		wasMentioned := c.detectMention(message, botUsername)
 

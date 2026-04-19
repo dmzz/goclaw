@@ -208,8 +208,8 @@ func TestHasOtherMention_CaptionWithOtherMention(t *testing.T) {
 	}
 }
 
+// LOCAL FIX START: telegram multi-bot mention handling tests
 // --- shouldSkipForeignBotMessageInYield / isReplyToOtherBot ---
-
 func TestShouldSkipForeignBotMessageInYield_DefaultBlocksOtherBots(t *testing.T) {
 	ch := &Channel{}
 	msg := &telego.Message{
@@ -287,6 +287,8 @@ func TestIsReplyToOtherBot(t *testing.T) {
 		t.Error("isReplyToOtherBot should ignore replies to our own bot")
 	}
 }
+
+// LOCAL FIX END: telegram multi-bot mention handling tests
 
 // --- isServiceMessage ---
 

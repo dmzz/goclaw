@@ -109,7 +109,9 @@ export const configSchema: Record<string, FieldDef[]> = {
     { key: "group_policy", label: "Group Policy", type: "select", options: groupPolicyOptions, defaultValue: "pairing" },
     { key: "mention_mode", label: "Group Response Behavior", type: "select", options: mentionModeOptions, defaultValue: "strict", help: "How the bot decides when to respond in groups with multiple bots." },
     { key: "require_mention", label: "Require @mention in groups", type: "boolean", defaultValue: true, disabledWhen: { key: "mention_mode", value: "yield", hint: "fieldConfig.require_mention.disabledHint" } },
+    // LOCAL FIX START: telegram allow_bot_messages UI exposure
     { key: "allow_bot_messages", label: "Allow Messages From Other Bots", type: "boolean", defaultValue: false, help: "Allow inbound messages from other bots in groups. Yield mode still suppresses bot-authored replies to another bot to avoid ping-pong loops." },
+    // LOCAL FIX END: telegram allow_bot_messages UI exposure
     { key: "history_limit", label: "Group History Limit", type: "number", defaultValue: 50, help: "Max pending group messages for context (0 = disabled)" },
     { key: "dm_stream", label: "DM Streaming", type: "boolean", defaultValue: true, help: "Stream response progressively in DMs" },
     { key: "group_stream", label: "Group Streaming", type: "boolean", defaultValue: false, help: "Stream response progressively in groups" },
@@ -232,7 +234,9 @@ export const groupOverrideSchema: FieldDef[] = [
   { key: "group_policy", label: "Group Policy", type: "tristate", options: groupPolicyOptions },
   { key: "mention_mode", label: "Mention Mode", type: "tristate", options: mentionModeOptions },
   { key: "require_mention", label: "Require @mention", type: "tristate", disabledWhen: { key: "mention_mode", value: "yield", hint: "fieldConfig.require_mention.disabledHint" } },
+  // LOCAL FIX START: telegram allow_bot_messages UI exposure
   { key: "allow_bot_messages", label: "Allow Messages From Other Bots", type: "tristate", help: "Allow inbound messages from other bots in this group. Yield mode still suppresses bot-authored replies to another bot to avoid ping-pong loops." },
+  // LOCAL FIX END: telegram allow_bot_messages UI exposure
   { key: "enabled", label: "Enabled", type: "tristate" },
   { key: "allow_from", label: "Allowed Users", type: "tags", placeholder: "User IDs, one per line", help: "Restrict which users can interact in this group" },
   { key: "skills", label: "Skills Filter", type: "skill-select", help: "Limit available skills for this group" },

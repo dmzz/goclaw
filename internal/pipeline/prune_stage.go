@@ -184,6 +184,7 @@ func (s *PruneStage) Execute(ctx context.Context, state *RunState) error {
 	if err != nil {
 		return fmt.Errorf("compact messages: %w", err)
 	}
+	// LOCAL FIX START: preserve pending tool calls across compaction
 	// Preserve current-iteration pending messages across compaction. ThinkStage may
 	// have already appended the current assistant tool_call into pending, and
 	// ToolStage still needs that call in context to pair subsequent tool results.
@@ -192,6 +193,7 @@ func (s *PruneStage) Execute(ctx context.Context, state *RunState) error {
 	for _, msg := range pending {
 		state.Messages.AppendPending(msg)
 	}
+	// LOCAL FIX END: preserve pending tool calls across compaction
 	state.Prune.MidLoopCompacted = true
 	state.Compact.CompactionCount++
 	state.Compact.MemoryFlushedThisCycle = false // reset for next cycle

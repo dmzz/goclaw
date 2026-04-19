@@ -164,6 +164,7 @@ func toolCallsHaveParseErrors(calls []providers.ToolCall) bool {
 	return false
 }
 
+// LOCAL FIX START: retry empty-args web_search/web_fetch tool calls
 // toolsRequireArgsForTruncationHeuristic is the static allowlist of tools
 // where empty arguments are virtually never legitimate. Production traces show
 // provider-side truncation can surface as finish_reason="tool_calls" plus an
@@ -195,3 +196,5 @@ func toolCallsHaveMissingRequiredArgs(calls []providers.ToolCall) bool {
 	}
 	return false
 }
+
+// LOCAL FIX END: retry empty-args web_search/web_fetch tool calls

@@ -116,6 +116,7 @@ func TestEffectiveRequireMention_Override(t *testing.T) {
 	}
 }
 
+// LOCAL FIX START: telegram allow_bot_messages topic/group override tests
 func TestEffectiveAllowBotMessages_Override(t *testing.T) {
 	b := true
 	r := resolvedTopicConfig{allowBotMessages: &b}
@@ -133,3 +134,5 @@ func TestEffectiveAllowBotMessages_FallbackToDefault(t *testing.T) {
 		t.Error("effectiveAllowBotMessages should return default false when unset")
 	}
 }
+
+// LOCAL FIX END: telegram allow_bot_messages topic/group override tests
