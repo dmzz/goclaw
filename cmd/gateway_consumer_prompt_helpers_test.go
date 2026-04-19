@@ -5,6 +5,7 @@ import (
 	"testing"
 )
 
+// LOCAL FIX START: telegram multi-bot prompt augmentation tests
 func TestAugmentTelegramGroupPrompt_AddsRoutingGuidance(t *testing.T) {
 	got := augmentTelegramGroupPrompt("Base prompt")
 	if !strings.Contains(got, "Telegram Multi-Bot Routing:") {
@@ -27,3 +28,5 @@ func TestAugmentTelegramGroupPrompt_ListsKnownHandles(t *testing.T) {
 		}
 	}
 }
+
+// LOCAL FIX END: telegram multi-bot prompt augmentation tests

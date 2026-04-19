@@ -100,7 +100,9 @@ func (t *MessageTool) Execute(ctx context.Context, args map[string]any) *Result 
 	if target == "" {
 		target = ToolChatIDFromCtx(ctx)
 	}
+	// LOCAL FIX START: telegram current-chat target fallback
 	target = normalizeMessageTarget(ctx, channel, target)
+	// LOCAL FIX END: telegram current-chat target fallback
 	if target == "" {
 		return ErrorResult("target chat ID is required (no current chat in context)")
 	}
@@ -118,6 +120,7 @@ func (t *MessageTool) Execute(ctx context.Context, args map[string]any) *Result 
 		if !isMediaSend {
 			return ErrorResult("You are already responding to this chat. Your response text will be delivered automatically. Do not use the message tool to send text to your own chat — just include the content in your response text. To deliver files, use write_file with deliver=true instead.")
 		}
+		// LOCAL FIX START: allow sending existing files into the current Telegram chat
 		if filePath, ok := t.resolveMediaPath(ctx, message); ok {
 			if dm := DeliveredMediaFromCtx(ctx); dm != nil {
 				if dm.IsDelivered(filePath) {
@@ -125,6 +128,7 @@ func (t *MessageTool) Execute(ctx context.Context, args map[string]any) *Result 
 				}
 			}
 		}
+		// LOCAL FIX END: allow sending existing files into the current Telegram chat
 		// MEDIA self-send: block if ALL referenced files are already queued for delivery.
 		// Extracts paths from both standalone "MEDIA:path" and embedded multi-line messages.
 		if dm := DeliveredMediaFromCtx(ctx); dm != nil {
@@ -421,6 +425,7 @@ func isGroupContext(ctx context.Context) bool {
 		strings.HasPrefix(userID, "guild:")
 }
 
+// LOCAL FIX START: telegram current-chat target fallback helpers
 // normalizeMessageTarget hardens tool-call targets against common LLM mistakes.
 // For Telegram, agents sometimes send placeholders like "current chat" even though
 // the real numeric chat ID is already present in context. When that happens on the
@@ -467,6 +472,8 @@ func isTelegramChatTarget(target string) bool {
 	_, err := strconv.ParseInt(raw, 10, 64)
 	return err == nil
 }
+
+// LOCAL FIX END: telegram current-chat target fallback helpers
 
 // resolveMediaPath extracts and validates a file path from a "MEDIA:path" string.
 // Uses the same workspace-aware path resolution as other filesystem tools.

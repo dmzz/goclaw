@@ -193,6 +193,7 @@ export function ChannelsSection({ data, onSave, saving }: Props) {
                     {/* Telegram-specific */}
                     {ch === "telegram" && (
                       <div className="space-y-3">
+                        {/* LOCAL FIX START: telegram allow_bot_messages UI exposure */}
                         <div className="rounded-md border px-3 py-2 flex items-center justify-between">
                           <div>
                             <p className="text-sm font-medium">{t("channels.allowBotMessages")}</p>
@@ -203,6 +204,7 @@ export function ChannelsSection({ data, onSave, saving }: Props) {
                             onCheckedChange={(v) => updateChannel(ch, { allow_bot_messages: v })}
                           />
                         </div>
+                        {/* LOCAL FIX END: telegram allow_bot_messages UI exposure */}
                         <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{t("channels.streaming")}</p>
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                           <div className="rounded-md border px-3 py-2 flex items-center justify-between">

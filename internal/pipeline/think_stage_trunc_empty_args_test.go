@@ -42,6 +42,7 @@ func TestThinkStage_WriteFileEmptyArgsTreatedAsTruncated(t *testing.T) {
 	}
 }
 
+// LOCAL FIX START: retry empty-args web_search/web_fetch tool calls tests
 func TestThinkStage_WebSearchEmptyArgsTreatedAsTruncated(t *testing.T) {
 	t.Parallel()
 	deps := &PipelineDeps{
@@ -103,6 +104,8 @@ func TestThinkStage_WebFetchEmptyArgsTreatedAsTruncated(t *testing.T) {
 		t.Fatalf("pending len = %d, want 2 (assistant partial + user hint)", len(pending))
 	}
 }
+
+// LOCAL FIX END: retry empty-args web_search/web_fetch tool calls tests
 
 // TestThinkStage_DatetimeEmptyArgsNoRetry is the critical regression guard
 // for Phase 03. Nullary/optional-args tools (datetime, heartbeat) routinely

@@ -209,6 +209,7 @@ func TestCodexProviderBuildRequestBodyToolCallMessages(t *testing.T) {
 	}
 }
 
+// LOCAL FIX START: drop orphaned Responses API function_call_output test
 func TestCodexProviderBuildRequestBody_DropsOrphanToolOutput(t *testing.T) {
 	p := NewCodexProvider("test", &staticTokenSource{token: "test"}, "", "gpt-4o")
 
@@ -236,6 +237,8 @@ func TestCodexProviderBuildRequestBody_DropsOrphanToolOutput(t *testing.T) {
 		t.Fatalf("input[0] role = %v, want user", msg["role"])
 	}
 }
+
+// LOCAL FIX END: drop orphaned Responses API function_call_output test
 
 func TestCodexProviderBuildRequestBodyThinking(t *testing.T) {
 	p := NewCodexProvider("test", &staticTokenSource{token: "test"}, "", "gpt-4o")

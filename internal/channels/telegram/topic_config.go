@@ -11,15 +11,17 @@ import (
 // Fields are resolved in order: global TelegramConfig → wildcard group ("*") → specific group → specific topic.
 // TS ref: resolveTelegramGroupConfig() in src/telegram/bot.ts + resolveTelegramGroupPromptSettings() in group-config-helpers.ts.
 type resolvedTopicConfig struct {
-	groupPolicy      string
-	requireMention   *bool
-	mentionMode      string // "strict" (default) or "yield"
+	groupPolicy    string
+	requireMention *bool
+	mentionMode    string // "strict" (default) or "yield"
+	// LOCAL FIX START: telegram allow_bot_messages topic/group overrides
 	allowBotMessages *bool
-	allowFrom        []string
-	enabled          *bool
-	skills           []string // nil = inherit, non-nil = override (empty = no skills)
-	tools            []string // nil = inherit (all tools), non-nil = override (supports "group:xxx")
-	systemPrompt     string   // concatenated group + topic prompts
+	// LOCAL FIX END: telegram allow_bot_messages topic/group overrides
+	allowFrom    []string
+	enabled      *bool
+	skills       []string // nil = inherit, non-nil = override (empty = no skills)
+	tools        []string // nil = inherit (all tools), non-nil = override (supports "group:xxx")
+	systemPrompt string   // concatenated group + topic prompts
 }
 
 // resolveTopicConfig resolves the effective config for a chat/topic by merging layers.
@@ -27,11 +29,13 @@ type resolvedTopicConfig struct {
 // topicID is the forum topic thread ID (0 = not a forum topic).
 func resolveTopicConfig(cfg config.TelegramConfig, chatIDStr string, topicID int) resolvedTopicConfig {
 	result := resolvedTopicConfig{
-		groupPolicy:      cfg.GroupPolicy,
-		requireMention:   cfg.RequireMention,
-		mentionMode:      cfg.MentionMode,
+		groupPolicy:    cfg.GroupPolicy,
+		requireMention: cfg.RequireMention,
+		mentionMode:    cfg.MentionMode,
+		// LOCAL FIX START: telegram allow_bot_messages topic/group overrides
 		allowBotMessages: &cfg.AllowBotMessages,
-		allowFrom:        cfg.AllowFrom,
+		// LOCAL FIX END: telegram allow_bot_messages topic/group overrides
+		allowFrom: cfg.AllowFrom,
 	}
 
 	if cfg.Groups == nil {
@@ -72,9 +76,11 @@ func mergeGroupInto(dst *resolvedTopicConfig, src *config.TelegramGroupConfig) {
 	if src.MentionMode != "" {
 		dst.mentionMode = src.MentionMode
 	}
+	// LOCAL FIX START: telegram allow_bot_messages topic/group overrides
 	if src.AllowBotMessages != nil {
 		dst.allowBotMessages = src.AllowBotMessages
 	}
+	// LOCAL FIX END: telegram allow_bot_messages topic/group overrides
 	if len(src.AllowFrom) > 0 {
 		dst.allowFrom = src.AllowFrom
 	}
@@ -104,9 +110,11 @@ func mergeTopicInto(dst *resolvedTopicConfig, src *config.TelegramTopicConfig, g
 	if src.MentionMode != "" {
 		dst.mentionMode = src.MentionMode
 	}
+	// LOCAL FIX START: telegram allow_bot_messages topic/group overrides
 	if src.AllowBotMessages != nil {
 		dst.allowBotMessages = src.AllowBotMessages
 	}
+	// LOCAL FIX END: telegram allow_bot_messages topic/group overrides
 	if len(src.AllowFrom) > 0 {
 		dst.allowFrom = src.AllowFrom
 	}
@@ -147,6 +155,7 @@ func (r *resolvedTopicConfig) effectiveMentionMode(defaultVal string) string {
 	return defaultVal
 }
 
+// LOCAL FIX START: telegram allow_bot_messages topic/group overrides
 // effectiveAllowBotMessages returns the resolved allow_bot_messages value.
 // Falls back to the provided default if not overridden.
 func (r *resolvedTopicConfig) effectiveAllowBotMessages(defaultVal bool) bool {
@@ -155,6 +164,8 @@ func (r *resolvedTopicConfig) effectiveAllowBotMessages(defaultVal bool) bool {
 	}
 	return defaultVal
 }
+
+// LOCAL FIX END: telegram allow_bot_messages topic/group overrides
 
 // effectiveRequireMention returns the resolved require_mention value.
 // Falls back to the provided default if not overridden.

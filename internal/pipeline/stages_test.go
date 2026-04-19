@@ -1921,6 +1921,7 @@ func TestPruneStage_CacheTtlGate_MarkTouchedOnlyOnMutation(t *testing.T) {
 	}
 }
 
+// LOCAL FIX START: preserve pending tool calls across compaction test
 func TestPruneStage_CompactionPreservesPendingToolCall(t *testing.T) {
 	t.Parallel()
 
@@ -1960,3 +1961,5 @@ func TestPruneStage_CompactionPreservesPendingToolCall(t *testing.T) {
 		t.Fatalf("history after compaction = %#v, want compacted history", got)
 	}
 }
+
+// LOCAL FIX END: preserve pending tool calls across compaction test

@@ -254,9 +254,11 @@ func processNormalMessage(
 		}
 		extraPrompt += tsp
 	}
+	// LOCAL FIX START: telegram multi-bot prompt augmentation
 	if msg.Channel == "telegram" && peerKind == string(sessions.PeerGroup) {
 		extraPrompt = augmentTelegramGroupPrompt(extraPrompt)
 	}
+	// LOCAL FIX END: telegram multi-bot prompt augmentation
 
 	// Per-topic skill filter override (from group/topic config hierarchy).
 	var skillFilter []string
