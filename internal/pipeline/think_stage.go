@@ -104,8 +104,21 @@ func (s *ThinkStage) Execute(ctx context.Context, state *RunState) error {
 		(resp.FinishReason == "tool_calls" && toolCallsHaveMissingRequiredArgs(resp.ToolCalls)))
 	parseErr := !truncated && toolCallsHaveParseErrors(resp.ToolCalls)
 	if truncated || parseErr {
+		// LOCAL FIX START: don't let malformed retry batches leak into ToolStage
+		// ThinkStage retries malformed/truncated tool-call batches in the NEXT
+		// iteration. Clear LastResponse so ToolStage/ObserveStage in the CURRENT
+		// iteration cannot execute or observe the broken tool calls first.
+		state.Think.LastResponse = nil
+		// LOCAL FIX END: don't let malformed retry batches leak into ToolStage
 		state.Think.TruncRetries++
 		if state.Think.TruncRetries >= maxTruncRetries {
+			// LOCAL FIX START: user-facing error instead of fallback "..."
+			if parseErr {
+				state.Observe.FinalContent = "I couldn't complete the request because the model kept emitting malformed tool-call arguments. Please retry with a shorter or narrower request."
+			} else {
+				state.Observe.FinalContent = "I couldn't complete the request because the model kept emitting incomplete tool-call arguments. Please retry with a shorter or narrower request."
+			}
+			// LOCAL FIX END: user-facing error instead of fallback "..."
 			s.result = AbortRun
 			return nil
 		}

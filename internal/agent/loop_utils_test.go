@@ -134,7 +134,7 @@ func TestShouldShareSessions_DisabledByDefault(t *testing.T) {
 
 func TestShouldShareSessions_IndependentOfMemory(t *testing.T) {
 	l := &Loop{workspaceSharing: &store.WorkspaceSharingConfig{
-		ShareMemory:    true,
+		ShareMemory:   true,
 		ShareSessions: false,
 	}}
 	if l.shouldShareSessions() {
@@ -344,6 +344,12 @@ func TestBuildTeamMD_LeadRole_ContainsWorkflow(t *testing.T) {
 	}
 	if !strings.Contains(md, "team_tasks") {
 		t.Error("expected team_tasks in lead workflow section")
+	}
+	if !strings.Contains(md, "team_tasks(action=\"search\", query=\"keywords\")") {
+		t.Error("expected search-before-create guidance for lead workflow")
+	}
+	if !strings.Contains(md, "Explicit team request wins") {
+		t.Error("expected explicit team-request delegation guidance")
 	}
 	if !strings.Contains(md, "Member One") {
 		t.Error("expected member display name")

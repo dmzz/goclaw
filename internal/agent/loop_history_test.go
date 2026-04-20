@@ -431,6 +431,54 @@ func TestSanitizeHistory_MergePreservesMediaRefs(t *testing.T) {
 	}
 }
 
+func TestSanitizeHistory_DropsInternalRetryNoise(t *testing.T) {
+	msgs := []providers.Message{
+		{Role: "user", Content: "real question"},
+		{Role: "assistant", Content: ""},
+		{Role: "user", Content: internalRetryHintTruncated + " Please retry."},
+		{Role: "assistant", Content: "..."},
+		{Role: "user", Content: internalRetryHintMalformed + " Please retry."},
+		{Role: "assistant", Content: internalToolCallFailureIncomplete},
+		{Role: "assistant", Content: internalToolCallFailureMalformed},
+		{Role: "user", Content: internalBudgetHint70 + " Wrap up."},
+		{Role: "user", Content: internalBudgetHint90 + " Finish now."},
+		{Role: "assistant", Content: "actual answer"},
+	}
+
+	got, dropped := sanitizeHistory(msgs)
+	if dropped != 8 {
+		t.Fatalf("expected 8 dropped messages, got %d", dropped)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 messages after cleanup, got %d", len(got))
+	}
+	if got[0].Content != "real question" {
+		t.Fatalf("first message = %q, want %q", got[0].Content, "real question")
+	}
+	if got[1].Content != "actual answer" {
+		t.Fatalf("assistant message = %q, want %q", got[1].Content, "actual answer")
+	}
+}
+
+func TestSanitizeHistory_KeepsEmptyAssistantToolCallMessage(t *testing.T) {
+	msgs := []providers.Message{
+		{Role: "user", Content: "search"},
+		{Role: "assistant", Content: "", ToolCalls: []providers.ToolCall{{ID: "tc1", Name: "web_search"}}},
+		{Role: "tool", Content: "ok", ToolCallID: "tc1"},
+	}
+
+	got, dropped := sanitizeHistory(msgs)
+	if dropped != 0 {
+		t.Fatalf("expected 0 dropped messages, got %d", dropped)
+	}
+	if len(got) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(got))
+	}
+	if len(got[1].ToolCalls) != 1 {
+		t.Fatalf("expected assistant tool call to be preserved, got %+v", got[1])
+	}
+}
+
 func TestUniquifyToolCallIDs(t *testing.T) {
 	runID := "abcdef12-3456-7890-abcd-ef1234567890"
 

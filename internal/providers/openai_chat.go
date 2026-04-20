@@ -11,6 +11,89 @@ import (
 	"strings"
 )
 
+// mergeOpenAIStreamToolArgs merges streamed function.arguments chunks from
+// OpenAI-compatible SSE responses.
+//
+// Most providers send argument deltas, but some routes resend the full
+// accumulated JSON or overlap the previous suffix. Blind concatenation turns a
+// valid stream into malformed JSON like `{"q":"a"}{"q":"ab"}`.
+func mergeOpenAIStreamToolArgs(prev, next string) string {
+	if next == "" || next == prev {
+		return prev
+	}
+	if prev == "" {
+		return next
+	}
+	// LOCAL FIX START: tolerate cumulative/overlapping OpenAI tool-arg chunks
+	if strings.HasPrefix(next, prev) {
+		return next
+	}
+	if strings.HasSuffix(prev, next) {
+		return prev
+	}
+	maxOverlap := min(len(prev), len(next))
+	for overlap := maxOverlap; overlap > 0; overlap-- {
+		if strings.HasSuffix(prev, next[:overlap]) {
+			return prev + next[overlap:]
+		}
+	}
+	// LOCAL FIX END: tolerate cumulative/overlapping OpenAI tool-arg chunks
+	return prev + next
+}
+
+func decodeOpenAIToolArgs(raw string) (map[string]any, string, error) {
+	args := make(map[string]any)
+	if strings.TrimSpace(raw) == "" {
+		return args, "", nil
+	}
+	if err := json.Unmarshal([]byte(raw), &args); err == nil {
+		return args, "", nil
+	} else {
+		// LOCAL FIX START: recover latest valid object from malformed OpenAI tool-arg streams
+		if recovered, strategy, ok := decodeLastJSONObjectSequence(raw); ok {
+			return recovered, strategy, nil
+		}
+		if recovered, ok := decodeJSONObjectSuffix(raw); ok {
+			return recovered, "suffix_resync", nil
+		}
+		// LOCAL FIX END: recover latest valid object from malformed OpenAI tool-arg streams
+		return map[string]any{}, "", err
+	}
+}
+
+func decodeLastJSONObjectSequence(raw string) (map[string]any, string, bool) {
+	dec := json.NewDecoder(strings.NewReader(raw))
+	var last map[string]any
+	decoded := false
+	for {
+		var next map[string]any
+		if err := dec.Decode(&next); err != nil {
+			if decoded {
+				if err == io.EOF {
+					return last, "json_sequence_last", true
+				}
+				return last, "json_sequence_last_partial", true
+			}
+			return nil, "", false
+		}
+		last = next
+		decoded = true
+	}
+}
+
+func decodeJSONObjectSuffix(raw string) (map[string]any, bool) {
+	for i := 0; i < len(raw); i++ {
+		if raw[i] != '{' {
+			continue
+		}
+		var args map[string]any
+		if err := json.Unmarshal([]byte(raw[i:]), &args); err == nil {
+			return args, true
+		}
+	}
+	return nil, false
+}
+
 func (p *OpenAIProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
 	model := p.resolveModel(req.Model)
 	body := p.buildRequestBody(model, req, false)
@@ -167,7 +250,9 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest, onChun
 			if tc.Function.Name != "" {
 				acc.Name = strings.TrimSpace(tc.Function.Name)
 			}
-			acc.rawArgs += tc.Function.Arguments
+			// LOCAL FIX START: tolerate cumulative/overlapping OpenAI tool-arg chunks
+			acc.rawArgs = mergeOpenAIStreamToolArgs(acc.rawArgs, tc.Function.Arguments)
+			// LOCAL FIX END: tolerate cumulative/overlapping OpenAI tool-arg chunks
 			if tc.Function.ThoughtSignature != "" {
 				acc.thoughtSig = tc.Function.ThoughtSignature
 			}
@@ -187,11 +272,14 @@ func (p *OpenAIProvider) ChatStream(ctx context.Context, req ChatRequest, onChun
 	// Parse accumulated tool call arguments
 	for i := 0; i < len(accumulators); i++ {
 		acc := accumulators[i]
-		args := make(map[string]any)
-		if err := json.Unmarshal([]byte(acc.rawArgs), &args); err != nil && acc.rawArgs != "" {
+		args, recoveredBy, err := decodeOpenAIToolArgs(acc.rawArgs)
+		if err != nil && acc.rawArgs != "" {
 			slog.Warn("openai_stream: failed to parse tool call arguments",
 				"tool", acc.Name, "raw_len", len(acc.rawArgs), "error", err)
 			acc.ParseError = fmt.Sprintf("malformed JSON (%d chars): %v", len(acc.rawArgs), err)
+		} else if recoveredBy != "" {
+			slog.Info("openai_stream: recovered tool call arguments",
+				"tool", acc.Name, "raw_len", len(acc.rawArgs), "strategy", recoveredBy)
 		}
 		acc.Arguments = args
 		if acc.thoughtSig != "" {

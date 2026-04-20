@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/nextlevelbuilder/goclaw/internal/providers"
@@ -36,6 +37,9 @@ func TestThinkStage_WriteFileEmptyArgsTreatedAsTruncated(t *testing.T) {
 	if state.Think.TruncRetries != 1 {
 		t.Errorf("TruncRetries = %d, want 1", state.Think.TruncRetries)
 	}
+	if state.Think.LastResponse != nil {
+		t.Fatal("LastResponse should be cleared so ToolStage cannot execute the malformed retry batch")
+	}
 	pending := state.Messages.Pending()
 	if len(pending) != 2 {
 		t.Fatalf("pending len = %d, want 2 (assistant partial + user hint)", len(pending))
@@ -68,6 +72,9 @@ func TestThinkStage_WebSearchEmptyArgsTreatedAsTruncated(t *testing.T) {
 	if state.Think.TruncRetries != 1 {
 		t.Errorf("TruncRetries = %d, want 1", state.Think.TruncRetries)
 	}
+	if state.Think.LastResponse != nil {
+		t.Fatal("LastResponse should be cleared so ToolStage cannot execute the malformed retry batch")
+	}
 	pending := state.Messages.Pending()
 	if len(pending) != 2 {
 		t.Fatalf("pending len = %d, want 2 (assistant partial + user hint)", len(pending))
@@ -98,6 +105,9 @@ func TestThinkStage_WebFetchEmptyArgsTreatedAsTruncated(t *testing.T) {
 	}
 	if state.Think.TruncRetries != 1 {
 		t.Errorf("TruncRetries = %d, want 1", state.Think.TruncRetries)
+	}
+	if state.Think.LastResponse != nil {
+		t.Fatal("LastResponse should be cleared so ToolStage cannot execute the malformed retry batch")
 	}
 	pending := state.Messages.Pending()
 	if len(pending) != 2 {
@@ -188,6 +198,12 @@ func TestThinkStage_WriteFileEmptyArgsExhaustRetries(t *testing.T) {
 	if stage.Result() != AbortRun {
 		t.Errorf("Result() = %v, want AbortRun after 3rd retry", stage.Result())
 	}
+	if state.Think.LastResponse != nil {
+		t.Fatal("LastResponse should stay cleared on abort")
+	}
+	if !strings.Contains(state.Observe.FinalContent, "incomplete tool-call arguments") {
+		t.Fatalf("expected user-facing truncation error, got %q", state.Observe.FinalContent)
+	}
 }
 
 // TestThinkStage_WriteFileWithArgsNoRetry confirms non-empty args on an
@@ -216,5 +232,40 @@ func TestThinkStage_WriteFileWithArgsNoRetry(t *testing.T) {
 	}
 	if state.Think.TruncRetries != 0 {
 		t.Errorf("TruncRetries = %d, want 0 (args present)", state.Think.TruncRetries)
+	}
+}
+
+func TestThinkStage_ParseErrorRetryClearsLastResponse(t *testing.T) {
+	t.Parallel()
+	deps := &PipelineDeps{
+		Config: PipelineConfig{MaxIterations: 10, MaxTokens: 1000},
+		CallLLM: func(_ context.Context, _ *RunState, _ providers.ChatRequest) (*providers.ChatResponse, error) {
+			return &providers.ChatResponse{
+				FinishReason: "tool_calls",
+				ToolCalls: []providers.ToolCall{
+					{
+						ID:         "tc1",
+						Name:       "web_search",
+						Arguments:  map[string]any{},
+						ParseError: "malformed JSON (42 chars): unexpected EOF",
+					},
+				},
+			}, nil
+		},
+	}
+	stage := NewThinkStage(deps)
+	state := defaultState()
+
+	if err := stage.Execute(context.Background(), state); err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+	if stage.Result() != Continue {
+		t.Errorf("Result() = %v, want Continue (retry)", stage.Result())
+	}
+	if state.Think.TruncRetries != 1 {
+		t.Errorf("TruncRetries = %d, want 1", state.Think.TruncRetries)
+	}
+	if state.Think.LastResponse != nil {
+		t.Fatal("LastResponse should be cleared on parse-error retry")
 	}
 }
