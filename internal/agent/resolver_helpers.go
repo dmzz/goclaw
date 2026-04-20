@@ -77,16 +77,19 @@ func buildTeamMD(team *store.TeamData, members []store.TeamMemberData, selfID uu
 	sb.WriteString("\n## Workflow\n\n")
 	if selfRole == store.TeamRoleLead {
 		sb.WriteString("Delegate work to team members using `team_tasks` with `assignee`.\n\n")
-		sb.WriteString("```\nteam_tasks(action=\"create\", subject=\"...\", description=\"...\", assignee=\"agent-key\")\n```\n\n")
+		// LOCAL FIX START: bias lead prompt toward search->create and explicit team usage
+		sb.WriteString("```\nteam_tasks(action=\"search\", query=\"keywords\")\nteam_tasks(action=\"create\", subject=\"...\", description=\"...\", assignee=\"agent-key\")\n```\n\n")
 		sb.WriteString("The system auto-dispatches to the assigned member and auto-completes when done.\n")
 		sb.WriteString("Do NOT use `spawn` for team delegation — `spawn` is only for self-clone subagent work.\n\n")
 		sb.WriteString("Rules:\n")
 		sb.WriteString("- Always specify `assignee` — match member expertise from the list above\n")
 		sb.WriteString("- **Check task board first** — call `team_tasks(action=\"search\", query=\"<keywords>\")` to find similar tasks before creating. This uses semantic search and saves tokens vs listing all. The system blocks creation if you skip this step\n")
+		sb.WriteString("- **Explicit team request wins** — if the user asks you to use the team/teammates, do not solve it solo. Search first, then create team tasks\n")
 		sb.WriteString("- **Create ALL tasks upfront** in one batch, then announce — then STOP. Do NOT create one task, wait for it to finish, then create the next\n")
 		sb.WriteString("- Delegation is NOT completion — do NOT say \"done\"/\"xong\"/\"finished\" after delegating. Only report completion when ALL task results have been delivered\n")
 		sb.WriteString("- Results arrive automatically — do NOT present partial results\n")
-		sb.WriteString("- **Delegate complex work** — tasks requiring member expertise, multiple steps, or parallel execution should use team_tasks. Handle simple requests yourself (greetings, clarifications, lookups, translations, single-tool calls). If you can answer in one response with a single tool call, do it yourself. If it requires sustained work, multiple skills, or member expertise → delegate\n")
+		sb.WriteString("- **Delegate complex work** — tasks requiring member expertise, multiple steps, parallel execution, or research/report/summarize workflows should use team_tasks. Handle simple requests yourself (greetings, clarifications, tiny lookups, translations, single-tool checks). If it requires sustained work, synthesis, multiple skills, or member expertise → delegate\n")
+		// LOCAL FIX END: bias lead prompt toward search->create and explicit team usage
 		sb.WriteString("- **Do NOT block on completed tasks** — pass completed task's result in the description instead of using blocked_by\n")
 
 		sb.WriteString("\n## Task Planning\n\n")

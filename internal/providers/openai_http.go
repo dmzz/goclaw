@@ -76,12 +76,15 @@ func (p *OpenAIProvider) parseResponse(resp *openAIResponse) *ChatResponse {
 		result.FinishReason = resp.Choices[0].FinishReason
 
 		for _, tc := range msg.ToolCalls {
-			args := make(map[string]any)
+			args, recoveredBy, err := decodeOpenAIToolArgs(tc.Function.Arguments)
 			var parseErr string
-			if err := json.Unmarshal([]byte(tc.Function.Arguments), &args); err != nil && tc.Function.Arguments != "" {
+			if err != nil && tc.Function.Arguments != "" {
 				slog.Warn("openai: failed to parse tool call arguments",
 					"tool", tc.Function.Name, "raw_len", len(tc.Function.Arguments), "error", err)
 				parseErr = fmt.Sprintf("malformed JSON (%d chars): %v", len(tc.Function.Arguments), err)
+			} else if recoveredBy != "" {
+				slog.Info("openai: recovered tool call arguments",
+					"tool", tc.Function.Name, "raw_len", len(tc.Function.Arguments), "strategy", recoveredBy)
 			}
 			call := ToolCall{
 				ID:         tc.ID,

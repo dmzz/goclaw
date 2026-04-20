@@ -225,6 +225,58 @@ func TestPipeline_CtxCancellationSetsAbortRun(t *testing.T) {
 	}
 }
 
+func TestPipeline_TruncationRetrySkipsToolStage(t *testing.T) {
+	t.Parallel()
+
+	llmCalls := 0
+	toolCalls := 0
+	deps := PipelineDeps{
+		Config: PipelineConfig{MaxIterations: 3, MaxTokens: 1000},
+		CallLLM: func(_ context.Context, _ *RunState, _ providers.ChatRequest) (*providers.ChatResponse, error) {
+			llmCalls++
+			if llmCalls == 1 {
+				return &providers.ChatResponse{
+					FinishReason: "tool_calls",
+					ToolCalls: []providers.ToolCall{
+						{ID: "tc1", Name: "web_search", Arguments: map[string]any{}},
+					},
+				}, nil
+			}
+			return &providers.ChatResponse{
+				FinishReason: "stop",
+				Content:      "recovered after retry",
+			}, nil
+		},
+		ExecuteToolCall: func(_ context.Context, _ *RunState, _ providers.ToolCall) ([]providers.Message, error) {
+			toolCalls++
+			return []providers.Message{{Role: "tool", Content: "unexpected"}}, nil
+		},
+	}
+
+	p := NewPipeline(
+		nil,
+		[]Stage{
+			NewThinkStage(&deps),
+			NewToolStage(&deps),
+			NewObserveStage(&deps),
+		},
+		nil,
+		deps,
+	)
+
+	state := buildMinimalRunState()
+	result, err := p.Run(context.Background(), state)
+	if err != nil {
+		t.Fatalf("Run() error: %v", err)
+	}
+	if toolCalls != 0 {
+		t.Fatalf("tool stage executed %d malformed retry batch(es), want 0", toolCalls)
+	}
+	if result == nil || result.Content != "recovered after retry" {
+		t.Fatalf("unexpected result content: %#v", result)
+	}
+}
+
 func TestPipeline_MaxIterationsBoundsLoop(t *testing.T) {
 	t.Parallel()
 	iter := newMockStageNoResult("iter")

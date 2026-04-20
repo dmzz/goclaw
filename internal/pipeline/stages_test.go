@@ -85,7 +85,7 @@ func TestThinkStage_WithToolCalls_ReturnsContinue(t *testing.T) {
 			return &providers.ChatResponse{
 				FinishReason: "tool_calls",
 				ToolCalls: []providers.ToolCall{
-					{ID: "tc1", Name: "read_file"},
+					{ID: "tc1", Name: "read_file", Arguments: map[string]any{"path": "README.md"}},
 				},
 			}, nil
 		},

@@ -119,6 +119,132 @@ func TestChatStream_CompleteToolCallArgs(t *testing.T) {
 	}
 }
 
+func TestChatStream_CumulativeToolCallArgs(t *testing.T) {
+	chunks := []string{
+		`data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_web","type":"function","function":{"name":"web_search","arguments":"{\"query\":\"AI"}}]}}]}` + "\n\n",
+		// Provider resends the full accumulated JSON instead of just the delta.
+		`data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"query\":\"AI agents news\",\"count\":5}"}}]}}]}` + "\n\n",
+		`data: {"choices":[{"index":0,"finish_reason":"tool_calls","delta":{}}]}` + "\n\n",
+		"data: [DONE]\n\n",
+	}
+
+	server := newOpenAISSEServer(t, chunks)
+	p := newTestOpenAIProvider(server.URL)
+
+	result, err := p.ChatStream(context.Background(), ChatRequest{
+		Model:    "gpt-4",
+		Messages: []Message{{Role: "user", Content: "search the web"}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.FinishReason != "tool_calls" {
+		t.Fatalf("FinishReason = %q, want %q", result.FinishReason, "tool_calls")
+	}
+	if len(result.ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(result.ToolCalls))
+	}
+	tc := result.ToolCalls[0]
+	if tc.ParseError != "" {
+		t.Fatalf("unexpected ParseError: %q", tc.ParseError)
+	}
+	if got := tc.Arguments["query"]; got != "AI agents news" {
+		t.Fatalf("query = %v, want %q", got, "AI agents news")
+	}
+	if got := tc.Arguments["count"]; got != float64(5) {
+		t.Fatalf("count = %v, want 5", got)
+	}
+}
+
+func TestMergeOpenAIStreamToolArgs_Overlap(t *testing.T) {
+	got := mergeOpenAIStreamToolArgs(`{"query":"AI agen`, `agents news","count":5}`)
+	want := `{"query":"AI agents news","count":5}`
+	if got != want {
+		t.Fatalf("mergeOpenAIStreamToolArgs() = %q, want %q", got, want)
+	}
+}
+
+func TestDecodeOpenAIToolArgs_ConcatenatedObjects(t *testing.T) {
+	got, recoveredBy, err := decodeOpenAIToolArgs(`{"query":"AI agents news","count":5}{"query":"AI agents news this week","count":10}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if recoveredBy != "json_sequence_last" {
+		t.Fatalf("recoveredBy = %q, want %q", recoveredBy, "json_sequence_last")
+	}
+	if got["query"] != "AI agents news this week" {
+		t.Fatalf("query = %v, want %q", got["query"], "AI agents news this week")
+	}
+	if got["count"] != float64(10) {
+		t.Fatalf("count = %v, want 10", got["count"])
+	}
+}
+
+func TestDecodeOpenAIToolArgs_ResyncsToValidSuffix(t *testing.T) {
+	got, recoveredBy, err := decodeOpenAIToolArgs(`{"query":"AI agents news","count":5}{"query":"AI agents news this week","count":10`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if recoveredBy != "json_sequence_last_partial" {
+		t.Fatalf("recoveredBy = %q, want %q", recoveredBy, "json_sequence_last_partial")
+	}
+	if got["query"] != "AI agents news" {
+		t.Fatalf("query = %v, want %q", got["query"], "AI agents news")
+	}
+	if got["count"] != float64(5) {
+		t.Fatalf("count = %v, want 5", got["count"])
+	}
+}
+
+func TestDecodeOpenAIToolArgs_SuffixResync(t *testing.T) {
+	got, recoveredBy, err := decodeOpenAIToolArgs(`garbage-prefix {"query":"AI agents news","count":5}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if recoveredBy != "suffix_resync" {
+		t.Fatalf("recoveredBy = %q, want %q", recoveredBy, "suffix_resync")
+	}
+	if got["query"] != "AI agents news" {
+		t.Fatalf("query = %v, want %q", got["query"], "AI agents news")
+	}
+}
+
+func TestChatStream_ConcatenatedToolCallArgs(t *testing.T) {
+	chunks := []string{
+		`data: {"choices":[{"index":0,"delta":{"role":"assistant","tool_calls":[{"index":0,"id":"call_web","type":"function","function":{"name":"web_search","arguments":"{\"query\":\"AI agents news\",\"count\":5}"}}]}}]}` + "\n\n",
+		`data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"query\":\"AI agents news this week\",\"count\":10}"}}]}}]}` + "\n\n",
+		`data: {"choices":[{"index":0,"finish_reason":"tool_calls","delta":{}}]}` + "\n\n",
+		"data: [DONE]\n\n",
+	}
+
+	server := newOpenAISSEServer(t, chunks)
+	p := newTestOpenAIProvider(server.URL)
+
+	result, err := p.ChatStream(context.Background(), ChatRequest{
+		Model:    "gpt-4",
+		Messages: []Message{{Role: "user", Content: "search the web"}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.FinishReason != "tool_calls" {
+		t.Fatalf("FinishReason = %q, want %q", result.FinishReason, "tool_calls")
+	}
+	if len(result.ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(result.ToolCalls))
+	}
+	tc := result.ToolCalls[0]
+	if tc.ParseError != "" {
+		t.Fatalf("unexpected ParseError: %q", tc.ParseError)
+	}
+	if tc.Arguments["query"] != "AI agents news this week" {
+		t.Fatalf("query = %v, want %q", tc.Arguments["query"], "AI agents news this week")
+	}
+	if tc.Arguments["count"] != float64(10) {
+		t.Fatalf("count = %v, want 10", tc.Arguments["count"])
+	}
+}
+
 // TestChatStream_MultipleToolCalls_OneTruncated verifies that when one tool call
 // has valid args and another is truncated, ParseError is set only on the truncated one.
 func TestChatStream_MultipleToolCalls_OneTruncated(t *testing.T) {
