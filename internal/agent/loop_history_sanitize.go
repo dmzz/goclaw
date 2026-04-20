@@ -39,6 +39,37 @@ func limitHistoryTurns(msgs []providers.Message, limit int) []providers.Message 
 	return msgs
 }
 
+const (
+	internalRetryHintTruncated = "[System] Your output was truncated because it exceeded max_tokens. Your tool call arguments were incomplete."
+	internalRetryHintMalformed = "[System] One or more tool call arguments were malformed"
+	internalBudgetHint70       = "[System] You have used 70% of your iteration budget."
+	internalBudgetHint90       = "[System] URGENT: You are at 90% of your iteration budget."
+
+	internalToolCallFailureIncomplete = "I couldn't complete the request because the model kept emitting incomplete tool-call arguments. Please retry with a shorter or narrower request."
+	internalToolCallFailureMalformed  = "I couldn't complete the request because the model kept emitting malformed tool-call arguments. Please retry with a shorter or narrower request."
+)
+
+func isInternalHistoryNoise(msg providers.Message) bool {
+	content := strings.TrimSpace(msg.Content)
+	switch msg.Role {
+	case "user":
+		return strings.HasPrefix(content, internalRetryHintTruncated) ||
+			strings.HasPrefix(content, internalRetryHintMalformed) ||
+			strings.HasPrefix(content, internalBudgetHint70) ||
+			strings.HasPrefix(content, internalBudgetHint90)
+	case "assistant":
+		if len(msg.ToolCalls) > 0 || len(msg.MediaRefs) > 0 || msg.Thinking != "" {
+			return false
+		}
+		return content == "" ||
+			content == "..." ||
+			content == internalToolCallFailureIncomplete ||
+			content == internalToolCallFailureMalformed
+	default:
+		return false
+	}
+}
+
 // sanitizeHistory repairs tool_use/tool_result pairing in session history.
 // Matching TS session-transcript-repair.ts sanitizeToolUseResultPairing().
 //
@@ -78,6 +109,14 @@ func sanitizeHistory(msgs []providers.Message) ([]providers.Message, int) {
 
 	for i := start; i < len(msgs); i++ {
 		msg := msgs[i]
+		// LOCAL FIX START: drop internal retry noise from persisted history
+		if isInternalHistoryNoise(msg) {
+			slog.Debug("sanitizeHistory: dropping internal session noise",
+				"role", msg.Role, "preview", truncateHistoryNoisePreview(strings.TrimSpace(msg.Content), 120))
+			dropped++
+			continue
+		}
+		// LOCAL FIX END: drop internal retry noise from persisted history
 
 		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
 			// Deep-copy ToolCalls to avoid mutating the original session history.
@@ -180,6 +219,13 @@ func sanitizeHistory(msgs []providers.Message) ([]providers.Message, int) {
 	}
 
 	return result, dropped
+}
+
+func truncateHistoryNoisePreview(s string, max int) string {
+	if len(s) <= max || max <= 0 {
+		return s
+	}
+	return s[:max] + "..."
 }
 
 func (l *Loop) maybeSummarize(ctx context.Context, sessionKey string) {

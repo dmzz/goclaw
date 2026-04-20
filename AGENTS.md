@@ -10,6 +10,37 @@ This repository is a moving fork. Treat everything marked with `LOCAL FIX START`
   - `f5563388` `fix(telegram): deliver existing files in current chat`
   - `08a834f7` `patch: consolidate telegram and tool-loop fixes`
 
+## Recommended Branch Layout
+
+For a fast-moving upstream, do not keep local patches only on the long-lived `dev` branch.
+
+Recommended layout:
+
+- `upstream` remote:
+  - `https://github.com/nextlevelbuilder/goclaw`
+- `base/vX.Y.Z`:
+  - exact local branch pointing to the clean upstream release/tag
+- `overlay/vX.Y.Z-dmzz`:
+  - local patch branch created from `base/vX.Y.Z`
+  - carries only dmzz-specific commits
+- `origin/dev`:
+  - optional integration branch in your fork
+  - update it only from a validated `overlay/*` branch
+
+Practical workflow:
+
+1. Fetch upstream tags.
+2. Create `base/vX.Y.Z` from the upstream tag.
+3. Create `overlay/vX.Y.Z-dmzz` from that base branch.
+4. Cherry-pick or rebase the local overlay commits onto the new overlay branch.
+5. Run validation.
+6. Only then fast-forward or merge into the branch you actually deploy from.
+
+This keeps the diff against upstream small, makes rebases predictable, and lets you compare:
+
+- `base/vX.Y.Z..overlay/vX.Y.Z-dmzz`
+- `overlay/vX.Y.Z-dmzz..overlay/vX.Y.(Z+1)-dmzz`
+
 ## Local Overlay Areas
 
 ### 1. Telegram message delivery fixes
@@ -55,14 +86,36 @@ This repository is a moving fork. Treat everything marked with `LOCAL FIX START`
 - Behavior covered:
   - preserve pending tool calls across compaction
   - retry empty-args `web_search` / `web_fetch` calls as truncation
+  - clear retry batches out of `LastResponse` so malformed tool-calls do not leak into `ToolStage`
+  - emit a user-facing truncation/tool-call error instead of falling through to final `...`
   - drop orphaned `function_call_output` items for Codex/Responses API
+  - tolerate cumulative/overlapping streamed `function.arguments` chunks from OpenAI chat-completions routes
+  - recover the last valid JSON object when OpenAI-compatible routes stream concatenated or partially repeated tool-call argument snapshots
+  - strip persisted internal retry noise (`[System]` truncation hints, empty assistant stubs, fallback `...`) out of session history before it can poison later prompts
 - Inline markers live in:
+  - `internal/agent/loop_history_sanitize.go`
+  - `internal/agent/loop_history_test.go`
   - `internal/pipeline/prune_stage.go`
+  - `internal/pipeline/pipeline_test.go`
   - `internal/pipeline/stages_test.go`
   - `internal/pipeline/think_stage.go`
   - `internal/pipeline/think_stage_trunc_empty_args_test.go`
   - `internal/providers/codex_build.go`
+  - `internal/providers/openai_chat.go`
+  - `internal/providers/openai_http.go`
+  - `internal/providers/openai_truncation_test.go`
   - `internal/providers/codex_test.go`
+
+### 4. Team lead routing bias
+
+- Goal: make lead agents actually use the team workflow when the user explicitly asks for team execution, and make the `search -> create` order clearer to weaker models.
+- Behavior covered:
+  - lead TEAM.md example now shows `team_tasks(search)` before `team_tasks(create)`
+  - explicit user requests to use the team/teammates must go through `team_tasks`
+  - research/report/summarize workflows are biased toward delegation instead of solo execution
+- Inline markers live in:
+  - `internal/agent/resolver_helpers.go`
+  - `internal/agent/loop_utils_test.go`
 
 ## Companion Files Without Inline Markers
 
