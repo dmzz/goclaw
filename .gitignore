@@ -31,6 +31,9 @@ ui/web/dist/
 ui/web/.vite/
 *.tsbuildinfo
 
+# Embedded web UI build output
+internal/webui/dist/
+
 # UI Desktop (Wails + React)
 ui/desktop/frontend/node_modules/
 ui/desktop/frontend/dist/*.js
