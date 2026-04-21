@@ -169,6 +169,36 @@ When syncing from upstream/community branches:
    - update related tests at the same time
 5. Also re-check the companion files listed above, because they are not inline-marked.
 
+## Strict Dmzz Release Pipeline
+
+For local dmzz releases such as `v3.10.0-dmzz.2`, always release from the matching `overlay/vX.Y.Z-dmzz` branch and do not use `dev` as an intermediate integration branch.
+
+The full image for dmzz releases must go through the prebuilt local pipeline below. Do not build the root `Dockerfile` with `ENABLE_EMBEDUI=true` on Docker Desktop / the remote daemon for release packaging, because that path always runs `pnpm build` inside Docker and is prone to hanging or failing during frontend/buildkit bootstrap.
+
+Required order:
+
+1. Validate the overlay checkout first:
+   - `go test ./cmd/... ./internal/channels/telegram ./internal/config ./internal/pipeline ./internal/providers ./internal/tools/...`
+   - `pnpm -C ui/web install --frozen-lockfile --force`
+   - `pnpm -C ui/web build`
+2. Build the local prebuilt full image from the overlay checkout:
+   - `./scripts/build-dmzz-prebuilt-full.sh --version vX.Y.Z-dmzz.N --image goclaw:vX.Y.Z-dmzz.N-full --docker-host tcp://192.168.11.1:2375 --docker-api-version 1.47`
+   - This script rebuilds `ui/web/dist`, syncs it into ignored local `internal/webui/dist`, builds linux `out/goclaw` with `-tags embedui`, builds `out/pkg-helper`, and only then runs `docker build -f Dockerfile.prebuilt-full`.
+   - The `pnpm -C ui/web build` part can spend noticeable time inside `tsc -b`; do not treat a busy `tsc` process as a script hang.
+   - If a retry is needed after local artifacts are already built, reuse them instead of rerunning the expensive local steps:
+     `./scripts/build-dmzz-prebuilt-full.sh --version vX.Y.Z-dmzz.N --image goclaw:vX.Y.Z-dmzz.N-full --docker-host tcp://192.168.11.1:2375 --docker-api-version 1.47 --skip-install --skip-ui-build --skip-go-build`
+   - `Dockerfile.prebuilt-full` must stay on top of `ghcr.io/nextlevelbuilder/goclaw:vX.Y.Z-full` or another explicitly reachable runtime base image. Do not introduce a `docker.io`-only base into this strict release path.
+   - If the daemon cannot pull `ghcr.io` on this host, retry the same command with `--runtime-base-image` pointing to a cached local full image already present on the remote daemon, for example `goclaw:vX.Y.Z-dmzz.(N-1)-full`.
+   - The strict prebuilt path must default to `DOCKER_BUILDKIT=0`, because BuildKit metadata resolution against `docker.io` / `ghcr.io` is known to fail on this Docker Desktop + SOCKS proxy setup even when the legacy builder works.
+3. Build the thin wrapper image from `/home/dmzz/project` against the freshly built base image:
+   - `DOCKER_API_VERSION=1.47 docker -H tcp://192.168.11.1:2375 build -t goclaw:full-sandbox --build-arg GOCLAW_BASE_IMAGE=goclaw:vX.Y.Z-dmzz.N-full -f /home/dmzz/project/Dockerfile.remote-full-sandbox /home/dmzz/project`
+4. Restart the deployed stack without rebuilding compose services:
+   - `DOCKER_API_VERSION=1.47 docker -H tcp://192.168.11.1:2375 compose -f /home/dmzz/project/docker-compose.remote-full-sandbox.yml --env-file /home/dmzz/project/goclaw/.env up -d --no-build`
+   - `docker-compose.remote-full-sandbox.yml` must keep `env_file: ./goclaw/.env` so runtime variables from `/home/dmzz/project/goclaw/.env` are injected into the container, while the CLI `--env-file` continues to drive compose interpolation and build args.
+   - The remote compose file does not synthesize `GOCLAW_POSTGRES_DSN`; `/home/dmzz/project/goclaw/.env` itself must already contain a real DSN before restart.
+   - For the current remote host-gateway scheme, the DSN shape is `postgres://USER:PASSWORD@asus-note:5432/DB?sslmode=disable`.
+5. Generated release artifacts under `out/` and `internal/webui/dist/` are local-only and must not be committed.
+
 ### Sandbox Containers During Core Updates
 
 - `goclaw-sbx-*` containers are ephemeral sandbox runtimes created by GoClaw from `goclaw-sandbox:bookworm-slim`; they are not long-lived deploy services.
