@@ -124,6 +124,9 @@ func (t *SkillManageTool) executeCreate(ctx context.Context, args map[string]any
 	if len(content) > maxSkillContentSize {
 		return ErrorResult(fmt.Sprintf("content too large (%d bytes, max %d)", len(content), maxSkillContentSize))
 	}
+	// LOCAL FIX START: normalize inline SKILL.md content before validation
+	content = skills.NormalizeSkillContent(content)
+	// LOCAL FIX END: normalize inline SKILL.md content before validation
 
 	// Security scan before any disk write
 	violations, safe := skills.GuardSkillContent(content)
