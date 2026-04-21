@@ -35,6 +35,15 @@ type DockerSandbox struct {
 	mu          sync.Mutex // protects lastUsed
 }
 
+// LOCAL FIX START: inspect stale sandbox container on name conflict
+type dockerInspectInfo struct {
+	containerID string
+	status      string
+	isSandbox   bool
+}
+
+// LOCAL FIX END: inspect stale sandbox container on name conflict
+
 // newDockerSandbox creates and starts a Docker container for sandboxed execution.
 // Matching TS buildSandboxCreateArgs() + createSandboxContainer().
 func newDockerSandbox(ctx context.Context, name string, cfg Config, workspace string) (*DockerSandbox, error) {
@@ -115,14 +124,31 @@ func newDockerSandbox(ctx context.Context, name string, cfg Config, workspace st
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("docker run failed: %w\nstderr: %s", err, stderr.String())
+	// LOCAL FIX START: recover from stale goclaw-sbx-* container name conflicts
+	runErr := cmd.Run()
+	if runErr != nil {
+		recovered, retry, recoverErr := recoverSandboxNameConflict(ctx, name, cfg, workspace, stderr.String())
+		if recoverErr != nil && isDockerNameConflict(stderr.String()) {
+			slog.Warn("sandbox name conflict recovery failed", "name", name, "error", recoverErr)
+		}
+		if recovered != nil {
+			return recovered, nil
+		}
+		if retry {
+			stdout.Reset()
+			stderr.Reset()
+			cmd = exec.CommandContext(ctx, "docker", args...)
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+			runErr = cmd.Run()
+		}
+	}
+	if runErr != nil {
+		return nil, fmt.Errorf("docker run failed: %w\nstderr: %s", runErr, stderr.String())
 	}
 
-	containerID := strings.TrimSpace(stdout.String())
-	if len(containerID) > 12 {
-		containerID = containerID[:12]
-	}
+	containerID := shortenContainerID(strings.TrimSpace(stdout.String()))
+	// LOCAL FIX END: recover from stale goclaw-sbx-* container name conflicts
 
 	slog.Info("sandbox container created", "id", containerID, "name", name, "image", cfg.Image)
 
@@ -145,6 +171,87 @@ func newDockerSandbox(ctx context.Context, name string, cfg Config, workspace st
 		lastUsed:    now,
 	}, nil
 }
+
+// LOCAL FIX START: helper flow for sandbox container recovery after daemon restarts
+func recoverSandboxNameConflict(ctx context.Context, name string, cfg Config, workspace, stderr string) (*DockerSandbox, bool, error) {
+	if !isDockerNameConflict(stderr) {
+		return nil, false, nil
+	}
+
+	info, err := inspectDockerContainer(ctx, name)
+	if err != nil {
+		return nil, false, err
+	}
+	if !info.isSandbox {
+		return nil, false, fmt.Errorf("conflicting container %q is not labeled goclaw.sandbox=true", name)
+	}
+
+	now := time.Now()
+	switch info.status {
+	case "running", "restarting":
+		slog.Warn("sandbox name conflict: adopting existing container", "name", name, "id", info.containerID, "status", info.status)
+		return &DockerSandbox{
+			containerID: shortenContainerID(info.containerID),
+			config:      cfg,
+			workspace:   workspace,
+			createdAt:   now,
+			lastUsed:    now,
+		}, false, nil
+	default:
+		if err := removeDockerContainer(ctx, name); err != nil {
+			return nil, false, err
+		}
+		slog.Info("removed stale sandbox container after name conflict", "name", name, "id", info.containerID, "status", info.status)
+		return nil, true, nil
+	}
+}
+
+func inspectDockerContainer(ctx context.Context, name string) (dockerInspectInfo, error) {
+	out, err := exec.CommandContext(ctx, "docker", "inspect", "--format", "{{.Id}}|{{.State.Status}}|{{index .Config.Labels \"goclaw.sandbox\"}}", name).CombinedOutput()
+	if err != nil {
+		return dockerInspectInfo{}, fmt.Errorf("inspect conflicting container %q: %w (output: %s)", name, err, strings.TrimSpace(string(out)))
+	}
+	return parseDockerInspectInfo(strings.TrimSpace(string(out)))
+}
+
+func parseDockerInspectInfo(line string) (dockerInspectInfo, error) {
+	parts := strings.Split(line, "|")
+	if len(parts) != 3 {
+		return dockerInspectInfo{}, fmt.Errorf("unexpected docker inspect output %q", line)
+	}
+	id := strings.TrimSpace(parts[0])
+	status := strings.TrimSpace(parts[1])
+	label := strings.TrimSpace(parts[2])
+	if id == "" || status == "" {
+		return dockerInspectInfo{}, fmt.Errorf("incomplete docker inspect output %q", line)
+	}
+	return dockerInspectInfo{
+		containerID: id,
+		status:      status,
+		isSandbox:   label == "true",
+	}, nil
+}
+
+func removeDockerContainer(ctx context.Context, name string) error {
+	out, err := exec.CommandContext(ctx, "docker", "rm", "-f", name).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("remove stale container %q: %w (output: %s)", name, err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func isDockerNameConflict(stderr string) bool {
+	return strings.Contains(stderr, "container name") && strings.Contains(stderr, "already in use")
+}
+
+func shortenContainerID(id string) string {
+	if len(id) > 12 {
+		return id[:12]
+	}
+	return id
+}
+
+// LOCAL FIX END: helper flow for sandbox container recovery after daemon restarts
 
 // Exec runs a command inside the container.
 // Optional ExecOption (e.g. WithEnv) injects per-call env vars via docker exec -e.

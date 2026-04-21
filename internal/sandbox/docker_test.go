@@ -126,3 +126,38 @@ func TestResolveScopeKey(t *testing.T) {
 		}
 	}
 }
+
+// LOCAL FIX START: sandbox name-conflict recovery regression coverage
+func TestParseDockerInspectInfo(t *testing.T) {
+	info, err := parseDockerInspectInfo("11b2d7f761e48d98f5ce3d8425be61657affbab39d85f1a021828b17f282e6b9|exited|true")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if info.containerID != "11b2d7f761e48d98f5ce3d8425be61657affbab39d85f1a021828b17f282e6b9" {
+		t.Fatalf("containerID = %q", info.containerID)
+	}
+	if info.status != "exited" {
+		t.Fatalf("status = %q", info.status)
+	}
+	if !info.isSandbox {
+		t.Fatal("expected sandbox label to be true")
+	}
+}
+
+func TestParseDockerInspectInfo_Invalid(t *testing.T) {
+	if _, err := parseDockerInspectInfo("broken-output"); err == nil {
+		t.Fatal("expected parse error for malformed inspect output")
+	}
+}
+
+func TestIsDockerNameConflict(t *testing.T) {
+	msg := `docker: Error response from daemon: Conflict. The container name "/goclaw-sbx-foo" is already in use by container "abc".`
+	if !isDockerNameConflict(msg) {
+		t.Fatal("expected name conflict to be detected")
+	}
+	if isDockerNameConflict("some other docker failure") {
+		t.Fatal("unexpected name conflict detection")
+	}
+}
+
+// LOCAL FIX END: sandbox name-conflict recovery regression coverage
