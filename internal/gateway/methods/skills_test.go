@@ -12,15 +12,17 @@ import (
 // ---- stub SkillStore ----
 
 type stubSkillStore struct {
-	skills  []store.SkillInfo
-	content map[string]string
-	version int64
+	skills    []store.SkillInfo
+	content   map[string]string
+	getCalls  []string
+	loadCalls []string
+	version   int64
 }
 
 func newStubSkillStore(skills []store.SkillInfo) *stubSkillStore {
 	content := make(map[string]string, len(skills))
 	for _, s := range skills {
-		content[s.Name] = "# " + s.Name + " skill content"
+		content[s.Slug] = "# " + s.Name + " skill content"
 	}
 	return &stubSkillStore{skills: skills, content: content, version: 1}
 }
@@ -28,8 +30,9 @@ func newStubSkillStore(skills []store.SkillInfo) *stubSkillStore {
 func (s *stubSkillStore) ListSkills(_ context.Context) []store.SkillInfo { return s.skills }
 
 func (s *stubSkillStore) GetSkill(_ context.Context, name string) (*store.SkillInfo, bool) {
+	s.getCalls = append(s.getCalls, name)
 	for i := range s.skills {
-		if s.skills[i].Name == name {
+		if s.skills[i].Slug == name {
 			return &s.skills[i], true
 		}
 	}
@@ -37,18 +40,19 @@ func (s *stubSkillStore) GetSkill(_ context.Context, name string) (*store.SkillI
 }
 
 func (s *stubSkillStore) LoadSkill(_ context.Context, name string) (string, bool) {
+	s.loadCalls = append(s.loadCalls, name)
 	c, ok := s.content[name]
 	return c, ok
 }
 
-func (s *stubSkillStore) LoadForContext(_ context.Context, _ []string) string  { return "" }
-func (s *stubSkillStore) BuildSummary(_ context.Context, _ []string) string    { return "" }
+func (s *stubSkillStore) LoadForContext(_ context.Context, _ []string) string { return "" }
+func (s *stubSkillStore) BuildSummary(_ context.Context, _ []string) string   { return "" }
 func (s *stubSkillStore) FilterSkills(_ context.Context, _ []string) []store.SkillInfo {
 	return nil
 }
-func (s *stubSkillStore) Version() int64  { return s.version }
-func (s *stubSkillStore) BumpVersion()    { s.version++ }
-func (s *stubSkillStore) Dirs() []string  { return nil }
+func (s *stubSkillStore) Version() int64 { return s.version }
+func (s *stubSkillStore) BumpVersion()   { s.version++ }
+func (s *stubSkillStore) Dirs() []string { return nil }
 
 // ---- helpers ----
 
@@ -121,6 +125,32 @@ func TestSkillsGet_ExistingSkill_ReturnsContent(t *testing.T) {
 	req := skillReqFrame(t, protocol.MethodSkillsGet, map[string]any{"name": "my-skill"})
 	m.handleGet(context.Background(), client, req)
 	// No panic = found path hit
+}
+
+func TestSkillsGet_DisplayNameFallback_UsesSlug(t *testing.T) {
+	// LOCAL FIX START: ensure skills.get resolves display names through the listed slug
+	store := newStubSkillStore([]store.SkillInfo{
+		{Name: "Statham Meme Quotes", Slug: "statham-meme-quotes", Description: "Test skill", Enabled: true},
+	})
+	m := NewSkillsMethods(store, nil)
+	client := nullClient()
+	req := skillReqFrame(t, protocol.MethodSkillsGet, map[string]any{"name": "Statham Meme Quotes"})
+
+	m.handleGet(context.Background(), client, req)
+
+	if len(store.getCalls) != 2 {
+		t.Fatalf("expected 2 get calls, got %d", len(store.getCalls))
+	}
+	if store.getCalls[0] != "Statham Meme Quotes" {
+		t.Fatalf("first get call: got %q", store.getCalls[0])
+	}
+	if store.getCalls[1] != "statham-meme-quotes" {
+		t.Fatalf("second get call: got %q", store.getCalls[1])
+	}
+	if len(store.loadCalls) != 1 || store.loadCalls[0] != "statham-meme-quotes" {
+		t.Fatalf("expected load by slug, got %v", store.loadCalls)
+	}
+	// LOCAL FIX END: ensure skills.get resolves display names through the listed slug
 }
 
 // ---- Tests: handleUpdate ----
