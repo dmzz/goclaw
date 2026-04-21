@@ -117,6 +117,33 @@ This keeps the diff against upstream small, makes rebases predictable, and lets 
   - `internal/agent/resolver_helpers.go`
   - `internal/agent/loop_utils_test.go`
 
+### 5. Skill frontmatter normalization fixes
+
+- Goal: let skill creation/publication recover when models send `SKILL.md` frontmatter with escaped newlines like `---\nname: ...` instead of real line breaks.
+- Behavior covered:
+  - normalize escaped `\n`, `\r\n`, and `\t` sequences before parsing frontmatter
+  - reuse the normalized content in both `skill_manage` and `publish_skill`
+  - persist normalized `SKILL.md` content when a copied skill directory arrived with escaped frontmatter
+  - keep regression coverage for escaped-frontmatter inputs
+- Inline markers live in:
+  - `internal/skills/helpers.go`
+  - `internal/skills/helpers_test.go`
+  - `internal/tools/publish_skill.go`
+  - `internal/tools/skill_manage.go`
+
+### 6. Sandbox container recovery fixes
+
+- Goal: let sandboxed file/exec tools survive Docker daemon or Docker Desktop restarts without getting stuck on stale container names.
+- Behavior covered:
+  - detect `docker run ... container name is already in use` for `goclaw-sbx-*`
+  - inspect the conflicting container and verify it is our sandbox via label `goclaw.sandbox=true`
+  - reuse the existing sandbox when it is still running
+  - remove the stale sandbox and retry when it is `exited`/dead after daemon restart
+  - keep regression coverage for inspect parsing and name-conflict detection
+- Inline markers live in:
+  - `internal/sandbox/docker.go`
+  - `internal/sandbox/docker_test.go`
+
 ## Companion Files Without Inline Markers
 
 These belong to the same imported overlay set but cannot be cleanly tracked with inline code comments:
@@ -141,6 +168,17 @@ When syncing from upstream/community branches:
    - shrink or remove it if upstream gained the same fix
    - update related tests at the same time
 5. Also re-check the companion files listed above, because they are not inline-marked.
+
+### Sandbox Containers During Core Updates
+
+- `goclaw-sbx-*` containers are ephemeral sandbox runtimes created by GoClaw from `goclaw-sandbox:bookworm-slim`; they are not long-lived deploy services.
+- When updating `goclaw` core or restarting Docker Desktop / the remote daemon, do not preserve old `goclaw-sbx-*` containers as state. They may survive as `Exited` containers and then block new tool runs by name conflict.
+- Before or immediately after restarting the main `goclaw` service, prune stale exited sandbox containers:
+  - `DOCKER_API_VERSION=1.47 docker -H tcp://192.168.11.1:2375 ps -aq --filter label=goclaw.sandbox=true --filter status=exited | xargs -r DOCKER_API_VERSION=1.47 docker -H tcp://192.168.11.1:2375 rm -f`
+- Verify sandbox tail state with:
+  - `DOCKER_API_VERSION=1.47 docker -H tcp://192.168.11.1:2375 ps -a --filter label=goclaw.sandbox=true`
+- Rebuild `goclaw-sandbox:bookworm-slim` only when `Dockerfile.sandbox.remote` or the sandbox toolchain changed. A normal GoClaw core update does not require rebuilding every sandbox container.
+- If file tools (`read_file`, `write_file`, `list_files`, `exec`) suddenly start failing with `container name is already in use`, treat that first as a stale sandbox cleanup problem, not as an agent logic regression.
 
 ## Validation After Any Upstream Sync
 
