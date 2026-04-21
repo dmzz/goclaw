@@ -33,6 +33,7 @@ ui/web/.vite/
 
 # Embedded web UI build output
 internal/webui/dist/
+/out/
 
 # UI Desktop (Wails + React)
 ui/desktop/frontend/node_modules/

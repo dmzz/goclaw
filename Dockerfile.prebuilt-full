@@ -1,0 +1,35 @@
+# Prebuilt runtime image for dmzz releases.
+# Intentionally avoids a Dockerfile frontend directive so remote daemons do not
+# need to pull docker/dockerfile:* before the build starts.
+#
+# Expected local artifacts in the build context:
+# - out/goclaw built for linux with `-tags embedui`
+# - out/pkg-helper built for linux
+# - migrations/ and skills/ from the current checkout
+
+ARG GOCLAW_RUNTIME_BASE_IMAGE=ghcr.io/nextlevelbuilder/goclaw:v3.10.0-full
+FROM ${GOCLAW_RUNTIME_BASE_IMAGE}
+
+ARG VERSION=dev
+
+LABEL org.opencontainers.image.title="GoClaw"
+LABEL org.opencontainers.image.version="${VERSION}"
+
+COPY out/goclaw /app/goclaw
+COPY out/pkg-helper /app/pkg-helper
+COPY migrations/ /app/migrations/
+COPY skills/ /app/bundled-skills/
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+
+RUN set -eux; \
+    sed -i 's/\r$//' /app/docker-entrypoint.sh; \
+    cd /app/bundled-skills; \
+    for skill in docx pptx xlsx; do \
+        if [ -d "${skill}/scripts" ] && [ ! -d "${skill}/scripts/office" ]; then \
+            rm -f "${skill}/scripts/office"; \
+            cp -r _shared/office "${skill}/scripts/office"; \
+        fi; \
+    done; \
+    chmod +x /app/docker-entrypoint.sh; \
+    chmod 755 /app/goclaw /app/pkg-helper; \
+    chown root:root /app/pkg-helper
