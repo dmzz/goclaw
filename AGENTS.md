@@ -192,10 +192,13 @@ Required order:
    - The strict prebuilt path must default to `DOCKER_BUILDKIT=0`, because BuildKit metadata resolution against `docker.io` / `ghcr.io` is known to fail on this Docker Desktop + SOCKS proxy setup even when the legacy builder works.
 3. Build the thin wrapper image from `/home/dmzz/project` against the freshly built base image:
    - `DOCKER_API_VERSION=1.47 docker -H tcp://192.168.11.1:2375 build -t goclaw:full-sandbox --build-arg GOCLAW_BASE_IMAGE=goclaw:vX.Y.Z-dmzz.N-full -f /home/dmzz/project/Dockerfile.remote-full-sandbox /home/dmzz/project`
-4. Restart the deployed stack without rebuilding compose services:
-   - `DOCKER_API_VERSION=1.47 docker -H tcp://192.168.11.1:2375 compose -f /home/dmzz/project/docker-compose.remote-full-sandbox.yml --env-file /home/dmzz/project/goclaw/.env up -d --no-build`
-   - `docker-compose.remote-full-sandbox.yml` must keep `env_file: ./goclaw/.env` so runtime variables from `/home/dmzz/project/goclaw/.env` are injected into the container, while the CLI `--env-file` continues to drive compose interpolation and build args.
-   - The remote compose file does not synthesize `GOCLAW_POSTGRES_DSN`; `/home/dmzz/project/goclaw/.env` itself must already contain a real DSN before restart.
+4. Restart the deployed stack through the full `goclaw` compose project so existing named volumes and port bindings are preserved:
+   - `DOCKER_API_VERSION=1.47 docker -H tcp://192.168.11.1:2375 compose --env-file goclaw/.env --project-directory /home/dmzz/project -p goclaw -f goclaw/docker-compose.yml -f goclaw/docker-compose.postgres.yml -f goclaw/docker-compose.sandbox.yml -f docker-compose.postgres.remote-pgvector.yml -f docker-compose.remote-full-sandbox.yml up -d --no-build --force-recreate goclaw`
+   - This must recreate `goclaw-goclaw-1` inside the existing `goclaw` project so it keeps the old named volumes such as `goclaw_goclaw-data`, `goclaw_goclaw-workspace`, and `goclaw_goclaw-skills`.
+   - `docker-compose.remote-full-sandbox.yml` must stay only as the last override file in that full stack; do not deploy it alone with an implicit project name from the current directory, because that creates a separate `project-goclaw-1` container without the existing persistent volumes and without the published external port.
+   - `docker-compose.remote-full-sandbox.yml` must keep `env_file: ./goclaw/.env` so runtime variables from `/home/dmzz/project/goclaw/.env` are injected into the container, while the CLI `--env-file goclaw/.env` continues to drive compose interpolation and build args.
+   - If the compose state is in doubt, inspect the resolved stack before restart with the same flags plus `config`; the resolved project name must be `goclaw`.
+   - The remote compose stack does not synthesize `GOCLAW_POSTGRES_DSN`; `/home/dmzz/project/goclaw/.env` itself must already contain a real DSN before restart.
    - For the current remote host-gateway scheme, the DSN shape is `postgres://USER:PASSWORD@asus-note:5432/DB?sslmode=disable`.
 5. Generated release artifacts under `out/` and `internal/webui/dist/` are local-only and must not be committed.
 
