@@ -110,13 +110,26 @@ func (m *SkillsMethods) handleGet(ctx context.Context, client *gateway.Client, r
 		return
 	}
 
-	info, ok := m.store.GetSkill(ctx, params.Name)
+	lookupKey := params.Name
+	info, ok := m.store.GetSkill(ctx, lookupKey)
+	// LOCAL FIX START: retry skills.get by slug when the UI passes a display name
+	if !ok {
+		for _, skill := range m.store.ListSkills(ctx) {
+			if skill.Name != params.Name || skill.Slug == "" {
+				continue
+			}
+			lookupKey = skill.Slug
+			info, ok = m.store.GetSkill(ctx, lookupKey)
+			break
+		}
+	}
+	// LOCAL FIX END: retry skills.get by slug when the UI passes a display name
 	if !ok {
 		client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrNotFound, i18n.T(locale, i18n.MsgNotFound, "skill", params.Name)))
 		return
 	}
 
-	content, _ := m.store.LoadSkill(ctx, params.Name)
+	content, _ := m.store.LoadSkill(ctx, lookupKey)
 
 	resp := map[string]any{
 		"name":        info.Name,
