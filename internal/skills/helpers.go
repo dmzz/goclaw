@@ -9,24 +9,59 @@ import (
 // SlugRegexp validates skill slugs: lowercase alphanumeric with hyphens, no leading/trailing hyphen.
 var SlugRegexp = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*[a-z0-9]$`)
 
+// LOCAL FIX START: repair malformed frontmatter opener ---\name:
+// escapedFrontmatterOpenerRegexp matches malformed frontmatter openers like
+// ---\name: ... where the model inserted a stray backslash instead of a newline.
+// Match only the known frontmatter keys so valid escaped newlines like ---\nname:
+// still flow through the generic unescape path below.
+var escapedFrontmatterOpenerRegexp = regexp.MustCompile(`(?m)^---\\(name|description|slug)(\s*:)`)
+
+// LOCAL FIX END: repair malformed frontmatter opener ---\name:
+
 // ParseSkillFrontmatter extracts name, description, and slug from SKILL.md YAML frontmatter.
 // Also returns the full parsed frontmatter as a map for DB storage.
 func ParseSkillFrontmatter(content string) (name, description, slug string, allFields map[string]string) {
 	allFields = make(map[string]string)
-	if !strings.HasPrefix(content, "---") {
+	// LOCAL FIX START: normalize incoming SKILL.md content before parsing
+	normalized := NormalizeSkillContent(content)
+	// LOCAL FIX END: normalize incoming SKILL.md content before parsing
+	// LOCAL FIX START: parse frontmatter from normalized content
+	if !strings.HasPrefix(strings.TrimSpace(normalized), "---") {
 		return "", "", "", allFields
 	}
-	end := strings.Index(content[3:], "---")
-	if end < 0 {
+	fm := extractFrontmatter(normalized)
+	if fm == "" {
 		return "", "", "", allFields
 	}
-	fm := content[3 : 3+end]
+	// LOCAL FIX END: parse frontmatter from normalized content
 	allFields = parseSimpleYAML(fm)
 	name = allFields["name"]
 	description = allFields["description"]
 	slug = allFields["slug"]
 	return
 }
+
+// LOCAL FIX START: normalize escaped or malformed SKILL.md frontmatter
+// NormalizeSkillContent canonicalizes SKILL.md content before validation/persistence.
+// It repairs common model/tool escaping mistakes where frontmatter is sent with
+// escaped newlines or a malformed opener such as ---\name: ...
+func NormalizeSkillContent(content string) string {
+	content = normalizeLineEndings(content)
+	trimmed := strings.TrimSpace(content)
+	if strings.HasPrefix(trimmed, "---") && extractFrontmatter(content) == "" {
+		// First repair the malformed opener captured in traces: ---\name: ...
+		content = escapedFrontmatterOpenerRegexp.ReplaceAllString(content, "---\n$1$2")
+		// First repair the common escaped-newline case: ---\nname: ...
+		if strings.Contains(content, `\n`) || strings.Contains(content, `\r\n`) || strings.Contains(content, `\t`) {
+			content = strings.ReplaceAll(content, `\r\n`, "\n")
+			content = strings.ReplaceAll(content, `\n`, "\n")
+			content = strings.ReplaceAll(content, `\t`, "\t")
+		}
+	}
+	return normalizeLineEndings(content)
+}
+
+// LOCAL FIX END: normalize escaped or malformed SKILL.md frontmatter
 
 // Slugify converts a skill name into a valid slug (lowercase, alphanumeric + hyphens).
 func Slugify(name string) string {

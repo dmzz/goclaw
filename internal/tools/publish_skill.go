@@ -84,12 +84,16 @@ func (t *PublishSkillTool) Execute(ctx context.Context, args map[string]any) *Re
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("cannot read SKILL.md: %v", err))
 	}
-	if len(strings.TrimSpace(string(content))) == 0 {
+	// LOCAL FIX START: normalize copied SKILL.md before validation
+	normalizedContent := []byte(skills.NormalizeSkillContent(string(content)))
+	// LOCAL FIX END: normalize copied SKILL.md before validation
+	if len(strings.TrimSpace(string(normalizedContent))) == 0 {
 		return ErrorResult("SKILL.md is empty")
 	}
 
+	// LOCAL FIX START: parse frontmatter from normalized SKILL.md bytes
 	// Parse frontmatter
-	name, description, slug, frontmatter := skills.ParseSkillFrontmatter(string(content))
+	name, description, slug, frontmatter := skills.ParseSkillFrontmatter(string(normalizedContent))
 	if name == "" {
 		return ErrorResult("SKILL.md frontmatter must contain 'name' field")
 	}
@@ -99,23 +103,26 @@ func (t *PublishSkillTool) Execute(ctx context.Context, args map[string]any) *Re
 	if !skills.SlugRegexp.MatchString(slug) {
 		return ErrorResult(fmt.Sprintf("invalid slug %q: must be lowercase alphanumeric with hyphens", slug))
 	}
+	// LOCAL FIX END: parse frontmatter from normalized SKILL.md bytes
 
 	// Check system skill conflict
 	if t.skills.IsSystemSkill(slug) {
 		return ErrorResult(fmt.Sprintf("slug %q conflicts with a system skill", slug))
 	}
 
-	// Compute hash + size
+	// LOCAL FIX START: hash and size-check normalized skill content
+	// Compute hash + source size limit
 	hasher := sha256.New()
-	hasher.Write(content)
+	hasher.Write(normalizedContent)
 	fileHash := fmt.Sprintf("%x", hasher.Sum(nil))
-	fileSize, err := dirSize(dir)
+	sourceSize, err := dirSize(dir)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("failed to calculate directory size: %v", err))
 	}
-	if fileSize > maxSkillDirSize {
+	if sourceSize > maxSkillDirSize {
 		return ErrorResult(fmt.Sprintf("skill directory exceeds size limit (%d MB)", maxSkillDirSize>>20))
 	}
+	// LOCAL FIX END: hash and size-check normalized skill content
 
 	// Version + destination (tenant-scoped)
 	version := t.skills.GetNextVersion(ctx, slug)
@@ -128,6 +135,17 @@ func (t *PublishSkillTool) Execute(ctx context.Context, args map[string]any) *Re
 	if err := copySkillDir(dir, destDir); err != nil {
 		return ErrorResult(fmt.Sprintf("failed to copy skill files: %v", err))
 	}
+	// LOCAL FIX START: persist normalized SKILL.md and store post-normalization size
+	if string(normalizedContent) != string(content) {
+		if err := os.WriteFile(filepath.Join(destDir, "SKILL.md"), normalizedContent, 0644); err != nil {
+			return ErrorResult(fmt.Sprintf("failed to normalize copied SKILL.md: %v", err))
+		}
+	}
+	fileSize, err := dirSize(destDir)
+	if err != nil {
+		return ErrorResult(fmt.Sprintf("failed to calculate copied directory size: %v", err))
+	}
+	// LOCAL FIX END: persist normalized SKILL.md and store post-normalization size
 
 	// Insert into DB — owner = actor (real sender) so a skill published in a
 	// group chat belongs to the individual user, not the group principal (#915).
