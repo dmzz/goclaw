@@ -110,6 +110,22 @@ func TestMarkdownToTelegramHTML_Blockquote(t *testing.T) {
 	}
 }
 
+// LOCAL FIX START: telegram collapsible blockquote rendering tests
+func TestMarkdownToTelegramHTML_ExpandableBlockquote(t *testing.T) {
+	got := markdownToTelegramHTML("<blockquote expandable>Hidden **bold** text</blockquote>")
+	if !strings.Contains(got, "<blockquote expandable>") {
+		t.Fatalf("expandable blockquote should survive, got: %q", got)
+	}
+	if strings.Contains(got, "&lt;blockquote") {
+		t.Fatalf("blockquote tag should not be escaped, got: %q", got)
+	}
+	if !strings.Contains(got, "<b>bold</b>") {
+		t.Fatalf("inner markdown should still render inside blockquote, got: %q", got)
+	}
+}
+
+// LOCAL FIX END: telegram collapsible blockquote rendering tests
+
 func TestMarkdownToTelegramHTML_ListItems(t *testing.T) {
 	tests := []struct {
 		input string
@@ -400,6 +416,52 @@ func TestChunkHTML_PreservesAllContent(t *testing.T) {
 		}
 	}
 }
+
+// LOCAL FIX START: telegram collapsible blockquote chunk safety tests
+func TestChunkHTML_DoesNotSplitInsideBlockquote(t *testing.T) {
+	input := "lead text <blockquote expandable>x</blockquote> tail"
+	got := chunkHTML(input, 40)
+	if len(got) < 2 {
+		t.Fatalf("expected multiple chunks, got %v", got)
+	}
+	for _, chunk := range got {
+		if strings.Contains(chunk, "<blockquote") && !strings.Contains(chunk, "</blockquote>") {
+			t.Fatalf("chunk split inside blockquote: %q", chunk)
+		}
+		if strings.Contains(chunk, "</blockquote>") && !strings.Contains(chunk, "<blockquote") {
+			t.Fatalf("chunk split inside closing blockquote: %q", chunk)
+		}
+	}
+}
+
+func TestChunkHTML_SplitsOversizedBlockquoteIntoStandaloneChunks(t *testing.T) {
+	input := "lead text <blockquote expandable>alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu</blockquote> tail text"
+	got := chunkHTML(input, 55)
+	if len(got) < 3 {
+		t.Fatalf("expected multiple chunks, got %v", got)
+	}
+
+	blockquoteChunks := 0
+	for _, chunk := range got {
+		if len(chunk) > 55 {
+			t.Fatalf("chunk exceeds maxLen: %q (%d)", chunk, len(chunk))
+		}
+		if strings.Contains(chunk, "<blockquote expandable>") {
+			blockquoteChunks++
+			if !strings.HasPrefix(chunk, "<blockquote expandable>") {
+				t.Fatalf("oversized blockquote chunk must start with blockquote tag: %q", chunk)
+			}
+			if !strings.HasSuffix(chunk, "</blockquote>") {
+				t.Fatalf("oversized blockquote chunk must end with blockquote tag: %q", chunk)
+			}
+		}
+	}
+	if blockquoteChunks < 2 {
+		t.Fatalf("expected blockquote to be split into multiple standalone chunks, got %v", got)
+	}
+}
+
+// LOCAL FIX END: telegram collapsible blockquote chunk safety tests
 
 // --- chunkPlainText: delegates to chunkHTML ---
 

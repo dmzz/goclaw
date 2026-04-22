@@ -144,6 +144,19 @@ This keeps the diff against upstream small, makes rebases predictable, and lets 
   - `internal/sandbox/docker.go`
   - `internal/sandbox/docker_test.go`
 
+### 7. Telegram collapsible blockquote rendering
+
+- Goal: let Telegram answers preserve model-emitted HTML blockquotes, including `<blockquote expandable>...</blockquote>`, instead of escaping them into plain text.
+- Behavior covered:
+  - preserve raw Telegram `<blockquote>` and `<blockquote expandable>` tags through the markdown-to-HTML pipeline
+  - still render inline markdown inside the preserved blockquote body
+  - avoid splitting a message chunk in the middle of a blockquote when the whole blockquote still fits in one Telegram message chunk
+  - when a single blockquote exceeds one Telegram message, split it into multiple standalone blockquote chunks so each next message starts with a fresh `<blockquote ...>`
+  - keep regression coverage for formatter pass-through and chunking safety
+- Inline markers live in:
+  - `internal/channels/telegram/format.go`
+  - `internal/channels/telegram/format_extended_test.go`
+
 ## Companion Files Without Inline Markers
 
 These belong to the same imported overlay set but cannot be cleanly tracked with inline code comments:
