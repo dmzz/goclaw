@@ -39,7 +39,12 @@ func htmlTagToMarkdown(text string) string {
 	return text
 }
 
+// LOCAL FIX START: telegram collapsible blockquote rendering
 func markdownToTelegramHTML(text string) string {
+	return markdownToTelegramHTMLWithBlockquotes(text, true)
+}
+
+func markdownToTelegramHTMLWithBlockquotes(text string, allowBlockquotes bool) string {
 	if text == "" {
 		return ""
 	}
@@ -48,6 +53,14 @@ func markdownToTelegramHTML(text string) string {
 	// LLMs sometimes output raw HTML (e.g. <b>bold</b>) which would get escaped
 	// by escapeHTML() and displayed as literal "<b>bold</b>" text.
 	text = htmlTagToMarkdown(text)
+
+	// Preserve Telegram HTML blockquotes so models can explicitly emit
+	// <blockquote> or <blockquote expandable> without them being escaped away.
+	var blockquotes blockquoteMatch
+	if allowBlockquotes {
+		blockquotes = extractTelegramBlockquotes(text)
+		text = blockquotes.text
+	}
 
 	// Extract markdown tables FIRST — uses dedicated \x00TB placeholders.
 	// Tables render as <pre> (monospace block) WITHOUT <code> wrapper,
@@ -62,7 +75,6 @@ func markdownToTelegramHTML(text string) string {
 	// Extract and protect inline code
 	inlineCodes := extractInlineCodes(text)
 	text = inlineCodes.text
-
 
 	// Extract and protect bare URLs from italic parsing.
 	// URLs with underscores (e.g. syngas_dailymail_2026_ai) get broken by
@@ -152,8 +164,49 @@ func markdownToTelegramHTML(text string) string {
 		text = strings.ReplaceAll(text, fmt.Sprintf("\x00TB%d\x00", i), fmt.Sprintf("<pre>%s</pre>", escaped))
 	}
 
+	for i, blockquote := range blockquotes.items {
+		tag := "<blockquote>"
+		if blockquote.expandable {
+			tag = "<blockquote expandable>"
+		}
+		inner := markdownToTelegramHTMLWithBlockquotes(blockquote.content, false)
+		text = strings.ReplaceAll(text, fmt.Sprintf("\x00BQ%d\x00", i), tag+inner+"</blockquote>")
+	}
+
 	return text
 }
+
+type telegramBlockquote struct {
+	content    string
+	expandable bool
+}
+
+type blockquoteMatch struct {
+	text  string
+	items []telegramBlockquote
+}
+
+var telegramBlockquoteRe = regexp.MustCompile(`(?is)<blockquote(\s+expandable)?\s*>([\s\S]*?)</blockquote>`)
+
+func extractTelegramBlockquotes(text string) blockquoteMatch {
+	var items []telegramBlockquote
+	idx := 0
+	text = telegramBlockquoteRe.ReplaceAllStringFunc(text, func(raw string) string {
+		match := telegramBlockquoteRe.FindStringSubmatch(raw)
+		if len(match) < 3 {
+			return raw
+		}
+		items = append(items, telegramBlockquote{
+			content:    match[2],
+			expandable: strings.TrimSpace(match[1]) != "",
+		})
+		placeholder := fmt.Sprintf("\x00BQ%d\x00", idx)
+		idx++
+		return placeholder
+	})
+	return blockquoteMatch{text: text, items: items}
+}
+// LOCAL FIX END: telegram collapsible blockquote rendering
 
 type codeBlockMatch struct {
 	text  string
@@ -392,7 +445,57 @@ func chunkPlainText(text string, maxLen int) []string {
 	return chunkHTML(text, maxLen)
 }
 
+// LOCAL FIX START: telegram collapsible blockquote chunk safety
 func chunkHTML(text string, maxLen int) []string {
+	if len(text) <= maxLen {
+		return []string{text}
+	}
+
+	segments := splitTelegramHTMLSegments(text)
+	var chunks []string
+	var current strings.Builder
+
+	flushCurrent := func() {
+		if current.Len() == 0 {
+			return
+		}
+		chunks = append(chunks, current.String())
+		current.Reset()
+	}
+
+	appendPiece := func(piece string) {
+		if piece == "" {
+			return
+		}
+		if current.Len() == 0 {
+			current.WriteString(piece)
+			return
+		}
+		if current.Len()+len(piece) <= maxLen {
+			current.WriteString(piece)
+			return
+		}
+		flushCurrent()
+		current.WriteString(piece)
+	}
+
+	for _, segment := range segments {
+		pieces, forceStandalone := chunkTelegramHTMLSegment(segment, maxLen)
+		for _, piece := range pieces {
+			if forceStandalone {
+				flushCurrent()
+				chunks = append(chunks, piece)
+				continue
+			}
+			appendPiece(piece)
+		}
+	}
+
+	flushCurrent()
+	return chunks
+}
+
+func chunkHTMLScalar(text string, maxLen int) []string {
 	if len(text) <= maxLen {
 		return []string{text}
 	}
@@ -450,3 +553,87 @@ func chunkHTML(text string, maxLen int) []string {
 
 	return chunks
 }
+
+type telegramHTMLSegment struct {
+	raw      string
+	openTag  string
+	inner    string
+	closeTag string
+}
+
+func splitTelegramHTMLSegments(text string) []telegramHTMLSegment {
+	var segments []telegramHTMLSegment
+	remaining := text
+
+	for len(remaining) > 0 {
+		match := telegramBlockquoteRe.FindStringSubmatchIndex(remaining)
+		if match == nil {
+			segments = append(segments, telegramHTMLSegment{raw: remaining})
+			break
+		}
+		if match[0] > 0 {
+			segments = append(segments, telegramHTMLSegment{raw: remaining[:match[0]]})
+		}
+
+		openTag := "<blockquote>"
+		if match[2] != -1 && match[3] != -1 {
+			openTag = "<blockquote expandable>"
+		}
+		segments = append(segments, telegramHTMLSegment{
+			raw:      remaining[match[0]:match[1]],
+			openTag:  openTag,
+			inner:    remaining[match[4]:match[5]],
+			closeTag: "</blockquote>",
+		})
+		remaining = remaining[match[1]:]
+	}
+
+	return segments
+}
+
+func chunkTelegramHTMLSegment(segment telegramHTMLSegment, maxLen int) ([]string, bool) {
+	if segment.openTag == "" {
+		pieces := chunkHTMLScalar(segment.raw, maxLen)
+		return pieces, len(pieces) > 1
+	}
+	if len(segment.raw) <= maxLen {
+		return []string{segment.raw}, false
+	}
+
+	innerMaxLen := maxLen - len(segment.openTag) - len(segment.closeTag)
+	if innerMaxLen <= 0 {
+		return chunkHTMLScalar(segment.raw, maxLen), true
+	}
+
+	innerChunks := chunkHTMLScalar(segment.inner, innerMaxLen)
+	if len(innerChunks) == 0 {
+		return []string{segment.openTag + segment.closeTag}, true
+	}
+
+	wrapped := make([]string, 0, len(innerChunks))
+	for _, inner := range innerChunks {
+		wrapped = append(wrapped, segment.openTag+inner+segment.closeTag)
+	}
+	return wrapped, true
+}
+
+func lastUnclosedBlockquote(text string) int {
+	segments := splitTelegramHTMLSegments(text)
+	offset := 0
+	for _, segment := range segments {
+		if segment.openTag != "" {
+			return offset
+		}
+		offset += len(segment.raw)
+	}
+	return -1
+}
+
+func endOfBlockquote(text string) int {
+	segments := splitTelegramHTMLSegments(text)
+	if len(segments) == 0 || segments[0].openTag == "" {
+		return -1
+	}
+	return len(segments[0].raw)
+}
+// LOCAL FIX END: telegram collapsible blockquote chunk safety
