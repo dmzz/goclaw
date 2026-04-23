@@ -220,7 +220,7 @@ Required order:
 - `goclaw-sbx-*` containers are ephemeral sandbox runtimes created by GoClaw from `goclaw-sandbox:bookworm-slim`; they are not long-lived deploy services.
 - When updating `goclaw` core or restarting Docker Desktop / the remote daemon, do not preserve old `goclaw-sbx-*` containers as state. They may survive as `Exited` containers and then block new tool runs by name conflict.
 - Before or immediately after restarting the main `goclaw` service, prune stale exited sandbox containers:
-  - `DOCKER_API_VERSION=1.47 docker -H tcp://192.168.11.1:2375 ps -aq --filter label=goclaw.sandbox=true --filter status=exited | xargs -r DOCKER_API_VERSION=1.47 docker -H tcp://192.168.11.1:2375 rm -f`
+  - `DOCKER_API_VERSION=1.47 sh -c 'docker -H tcp://192.168.11.1:2375 ps -aq --filter label=goclaw.sandbox=true --filter status=exited | xargs -r docker -H tcp://192.168.11.1:2375 rm -f'`
 - Verify sandbox tail state with:
   - `DOCKER_API_VERSION=1.47 docker -H tcp://192.168.11.1:2375 ps -a --filter label=goclaw.sandbox=true`
 - Rebuild `goclaw-sandbox:bookworm-slim` only when `Dockerfile.sandbox.remote` or the sandbox toolchain changed. A normal GoClaw core update does not require rebuilding every sandbox container.
