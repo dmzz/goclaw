@@ -206,6 +206,7 @@ func extractTelegramBlockquotes(text string) blockquoteMatch {
 	})
 	return blockquoteMatch{text: text, items: items}
 }
+
 // LOCAL FIX END: telegram collapsible blockquote rendering
 
 type codeBlockMatch struct {
@@ -636,4 +637,5 @@ func endOfBlockquote(text string) int {
 	}
 	return len(segments[0].raw)
 }
+
 // LOCAL FIX END: telegram collapsible blockquote chunk safety

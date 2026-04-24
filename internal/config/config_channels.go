@@ -374,14 +374,14 @@ type GatewayConfig struct {
 
 // ToolsConfig controls tool availability, policy, and web search.
 type ToolsConfig struct {
-	Profile          string                      `json:"profile,omitempty"`    // global profile: "minimal", "coding", "messaging", "full"
-	Allow            []string                    `json:"allow,omitempty"`      // global allow list (tool names or "group:xxx")
-	Deny             []string                    `json:"deny,omitempty"`       // global deny list
-	AlsoAllow        []string                    `json:"alsoAllow,omitempty"`  // additive: adds without removing existing
+	Profile          string                      `json:"profile,omitempty"`         // global profile: "minimal", "coding", "messaging", "full"
+	Allow            []string                    `json:"allow,omitempty"`           // global allow list (tool names or "group:xxx")
+	Deny             []string                    `json:"deny,omitempty"`            // global deny list
+	AlsoAllow        []string                    `json:"alsoAllow,omitempty"`       // additive: adds without removing existing
 	ByProvider       map[string]*ToolPolicySpec  `json:"byProvider,omitempty"`      // per-provider overrides
 	ShellDenyGroups  map[string]bool             `json:"shellDenyGroups,omitempty"` // global shell deny-group toggles (group name -> denied); per-agent overrides win per-key
 	ExecApproval     ExecApprovalCfg             `json:"execApproval"`              // exec command approval settings
-	WebFetch         WebFetchPolicyConfig        `json:"web_fetch"`            // domain policy for URL fetching
+	WebFetch         WebFetchPolicyConfig        `json:"web_fetch"`                 // domain policy for URL fetching
 	Browser          BrowserToolConfig           `json:"browser"`
 	RateLimitPerHour int                         `json:"rate_limit_per_hour,omitempty"` // max tool executions per hour per session (0 = disabled)
 	ScrubCredentials *bool                       `json:"scrub_credentials,omitempty"`   // auto-redact API keys/tokens in tool output (default true)

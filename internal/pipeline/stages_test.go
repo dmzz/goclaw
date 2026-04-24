@@ -46,7 +46,7 @@ func (m *mockTokenCounter) CountMessages(_ string, msgs []providers.Message) int
 	return len(msgs) * m.countPerMessage
 }
 func (m *mockTokenCounter) CountToolSchemas(_ string, _ []providers.ToolDefinition) int { return 0 }
-func (m *mockTokenCounter) ModelContextWindow(_ string) int                              { return 200_000 }
+func (m *mockTokenCounter) ModelContextWindow(_ string) int                             { return 200_000 }
 
 // --- ThinkStage tests ---
 
