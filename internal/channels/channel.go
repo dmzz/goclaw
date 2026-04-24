@@ -139,6 +139,15 @@ type StreamingChannel interface {
 	ReasoningStreamEnabled() bool
 }
 
+// LOCAL FIX START: telegram reply target preservation
+// MetadataStreamingChannel lets channels that need per-run routing metadata
+// create streams with reply/thread context that cannot be inferred from chatID.
+type MetadataStreamingChannel interface {
+	CreateStreamWithMetadata(ctx context.Context, chatID string, firstStream bool, metadata map[string]string) (ChannelStream, error)
+}
+
+// LOCAL FIX END: telegram reply target preservation
+
 // BlockReplyChannel is optionally implemented by channels that override
 // the gateway-level block_reply setting. Returns nil to inherit the gateway default.
 type BlockReplyChannel interface {

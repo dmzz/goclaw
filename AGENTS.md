@@ -157,6 +157,22 @@ This keeps the diff against upstream small, makes rebases predictable, and lets 
   - `internal/channels/telegram/format.go`
   - `internal/channels/telegram/format_extended_test.go`
 
+### 8. Telegram reply target preservation
+
+- Goal: make Telegram bot answers appear as replies to the inbound Telegram message that triggered the run, including streaming responses that are later edited in place.
+- Behavior covered:
+  - final outbound metadata carries `reply_to_message_id` for both the default `telegram` channel and DB-backed Telegram channel instance names
+  - Telegram streaming receives per-run metadata so the first real `sendMessage` has `ReplyParameters` before later final edits happen
+  - regression coverage for metadata propagation and stream reply target parsing
+- Inline markers live in:
+  - `cmd/gateway_consumer_normal.go`
+  - `cmd/gateway_consumer_helpers.go`
+  - `cmd/gateway_consumer_routing_test.go`
+  - `internal/channels/channel.go`
+  - `internal/channels/events.go`
+  - `internal/channels/telegram/stream.go`
+  - `internal/channels/telegram/stream_test.go`
+
 ## Companion Files Without Inline Markers
 
 These belong to the same imported overlay set but cannot be cleanly tracked with inline code comments:

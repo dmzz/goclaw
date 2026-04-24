@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"math"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -79,24 +80,28 @@ func shouldFallbackFromDraft(err error) bool {
 type DraftStream struct {
 	bot             *telego.Bot
 	chatID          int64
-	messageThreadID int           // forum topic thread ID (0 = no thread)
-	messageID       int           // 0 = not yet created (message transport only)
-	lastText        string        // last sent text (for dedup)
-	throttle        time.Duration // min delay between edits
-	lastEdit        time.Time
-	mu              sync.Mutex
-	stopped         bool
-	pending         string // pending text to send (buffered during throttle)
-	draftID         int    // sendMessageDraft draft_id (0 = message transport)
-	useDraft        bool   // true = draft transport, false = message transport
-	draftFailed     bool   // true = draft API rejected permanently, using message transport
+	messageThreadID int // forum topic thread ID (0 = no thread)
+	// LOCAL FIX START: telegram reply target preservation
+	replyToMessageID int // inbound Telegram message ID to reply to (0 = omit)
+	// LOCAL FIX END: telegram reply target preservation
+	messageID         int           // 0 = not yet created (message transport only)
+	lastText          string        // last sent text (for dedup)
+	throttle          time.Duration // min delay between edits
+	lastEdit          time.Time
+	mu                sync.Mutex
+	stopped           bool
+	pending           string // pending text to send (buffered during throttle)
+	draftID           int    // sendMessageDraft draft_id (0 = message transport)
+	useDraft          bool   // true = draft transport, false = message transport
+	draftFailed       bool   // true = draft API rejected permanently, using message transport
 	sendMayHaveLanded bool   // true = initial sendMessage was attempted and may have landed (even if timed out)
 }
 
+// LOCAL FIX START: telegram reply target preservation
 // NewDraftStream creates a new streaming preview manager.
 // When useDraft is true, the stream will attempt to use sendMessageDraft (Bot API 9.3+)
 // and automatically fall back to sendMessage+editMessageText if the API rejects it.
-func NewDraftStream(bot *telego.Bot, chatID int64, throttleMs int, messageThreadID int, useDraft bool) *DraftStream {
+func NewDraftStream(bot *telego.Bot, chatID int64, throttleMs int, messageThreadID int, useDraft bool, replyToMessageID int) *DraftStream {
 	throttle := defaultStreamThrottle
 	if throttleMs > 0 {
 		throttle = time.Duration(throttleMs) * time.Millisecond
@@ -106,14 +111,17 @@ func NewDraftStream(bot *telego.Bot, chatID int64, throttleMs int, messageThread
 		draftID = allocateDraftID()
 	}
 	return &DraftStream{
-		bot:             bot,
-		chatID:          chatID,
-		messageThreadID: messageThreadID,
-		throttle:        throttle,
-		useDraft:        useDraft,
-		draftID:         draftID,
+		bot:              bot,
+		chatID:           chatID,
+		messageThreadID:  messageThreadID,
+		replyToMessageID: replyToMessageID,
+		throttle:         throttle,
+		useDraft:         useDraft,
+		draftID:          draftID,
 	}
 }
+
+// LOCAL FIX END: telegram reply target preservation
 
 // Update sends or edits the streaming message with the latest text.
 // Throttled to avoid hitting Telegram rate limits.
@@ -195,14 +203,7 @@ func (ds *DraftStream) flush(ctx context.Context) error {
 	if ds.messageID == 0 {
 		// First message: send new
 		// TS ref: buildTelegramThreadParams() — General topic (1) must be omitted.
-		params := &telego.SendMessageParams{
-			ChatID:    tu.ID(ds.chatID),
-			Text:      htmlText,
-			ParseMode: telego.ModeHTML,
-		}
-		if sendThreadID := resolveThreadIDForSend(ds.messageThreadID); sendThreadID > 0 {
-			params.MessageThreadID = sendThreadID
-		}
+		params := ds.newSendMessageParams(htmlText)
 		ds.sendMayHaveLanded = true
 		msg, err := ds.bot.SendMessage(ctx, params)
 		// TS ref: withTelegramThreadFallback — retry without thread ID when topic is deleted.
@@ -236,6 +237,27 @@ func (ds *DraftStream) flush(ctx context.Context) error {
 	ds.lastEdit = time.Now()
 	return nil
 }
+
+// LOCAL FIX START: telegram reply target preservation
+func (ds *DraftStream) newSendMessageParams(htmlText string) *telego.SendMessageParams {
+	params := &telego.SendMessageParams{
+		ChatID:    tu.ID(ds.chatID),
+		Text:      htmlText,
+		ParseMode: telego.ModeHTML,
+	}
+	if sendThreadID := resolveThreadIDForSend(ds.messageThreadID); sendThreadID > 0 {
+		params.MessageThreadID = sendThreadID
+	}
+	if ds.replyToMessageID > 0 {
+		params.ReplyParameters = &telego.ReplyParameters{
+			MessageID:                ds.replyToMessageID,
+			AllowSendingWithoutReply: true,
+		}
+	}
+	return params
+}
+
+// LOCAL FIX END: telegram reply target preservation
 
 // Stop finalizes the stream with a final edit.
 func (ds *DraftStream) Stop(ctx context.Context) error {
@@ -290,6 +312,16 @@ func (ds *DraftStream) UsedDraftTransport() bool {
 // For groups: deletes the placeholder and lets the stream create its own message,
 // since group placeholders drift away as other messages arrive.
 func (c *Channel) CreateStream(ctx context.Context, chatID string, firstStream bool) (channels.ChannelStream, error) {
+	// LOCAL FIX START: telegram reply target preservation
+	return c.CreateStreamWithMetadata(ctx, chatID, firstStream, nil)
+	// LOCAL FIX END: telegram reply target preservation
+}
+
+// LOCAL FIX START: telegram reply target preservation
+// CreateStreamWithMetadata preserves reply-to metadata for the first real
+// sendMessage created by a stream. Final formatting later edits that message,
+// so the reply target must be present before Telegram creates it.
+func (c *Channel) CreateStreamWithMetadata(ctx context.Context, chatID string, firstStream bool, metadata map[string]string) (channels.ChannelStream, error) {
 	id, err := parseRawChatID(chatID)
 	if err != nil {
 		return nil, err
@@ -308,13 +340,26 @@ func (c *Channel) CreateStream(ctx context.Context, chatID string, firstStream b
 	// reasoning lane — draft messages are ephemeral and would disappear
 	// when the answer stream starts.
 	useDraft := isDM && !firstStream && c.draftTransportEnabled()
-	ds := NewDraftStream(c.bot, id, 0, threadID, useDraft)
+	ds := NewDraftStream(c.bot, id, 0, threadID, useDraft, telegramReplyToMessageID(metadata))
 
 	// No placeholder seeding — DraftStream creates its own message on first flush().
 	// This avoids "reply to deleted/non-existent message" artifacts.
 
 	return ds, nil
 }
+
+func telegramReplyToMessageID(metadata map[string]string) int {
+	if metadata == nil {
+		return 0
+	}
+	id, err := strconv.Atoi(metadata["reply_to_message_id"])
+	if err != nil || id <= 0 {
+		return 0
+	}
+	return id
+}
+
+// LOCAL FIX END: telegram reply target preservation
 
 // FinalizeStream hands the stream's messageID back to the placeholders map so that Send()
 // can edit it with the properly formatted final response.

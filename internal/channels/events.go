@@ -13,6 +13,16 @@ import (
 	"github.com/nextlevelbuilder/goclaw/pkg/protocol"
 )
 
+// LOCAL FIX START: telegram reply target preservation
+func createStreamForRun(ctx context.Context, sc StreamingChannel, chatID string, firstStream bool, metadata map[string]string) (ChannelStream, error) {
+	if withMeta, ok := sc.(MetadataStreamingChannel); ok {
+		return withMeta.CreateStreamWithMetadata(ctx, chatID, firstStream, metadata)
+	}
+	return sc.CreateStream(ctx, chatID, firstStream)
+}
+
+// LOCAL FIX END: telegram reply target preservation
+
 // HandleAgentEvent routes agent lifecycle events to streaming/reaction channels.
 // Called from the bus event subscriber — must be non-blocking.
 // eventType: "run.started", "chunk", "tool.call", "tool.result", "run.completed", "run.failed", "run.cancelled"
@@ -45,7 +55,9 @@ func (m *Manager) HandleAgentEvent(eventType, runID string, payload any) {
 	if sc, ok := ch.(StreamingChannel); ok && rc.Streaming {
 		switch eventType {
 		case protocol.AgentEventRunStarted:
-			stream, err := sc.CreateStream(ctx, rc.ChatID, true)
+			// LOCAL FIX START: telegram reply target preservation
+			stream, err := createStreamForRun(ctx, sc, rc.ChatID, true, rc.Metadata)
+			// LOCAL FIX END: telegram reply target preservation
 			if err != nil {
 				slog.Debug("stream start failed", "channel", rc.ChannelName, "error", err)
 			} else {
@@ -160,7 +172,9 @@ func (m *Manager) HandleAgentEvent(eventType, runID string, payload any) {
 							_ = reasoningStream.Stop(ctx)
 						}
 						// Create answer stream
-						stream, err := sc.CreateStream(ctx, rc.ChatID, false)
+						// LOCAL FIX START: telegram reply target preservation
+						stream, err := createStreamForRun(ctx, sc, rc.ChatID, false, rc.Metadata)
+						// LOCAL FIX END: telegram reply target preservation
 						if err != nil {
 							slog.Debug("stream restart after think-tag failed", "channel", rc.ChannelName, "error", err)
 						} else {
@@ -204,7 +218,9 @@ func (m *Manager) HandleAgentEvent(eventType, runID string, payload any) {
 
 				// Create fresh stream for answer (or new tool iteration)
 				if needNewStream || needTransition {
-					stream, err := sc.CreateStream(ctx, rc.ChatID, false)
+					// LOCAL FIX START: telegram reply target preservation
+					stream, err := createStreamForRun(ctx, sc, rc.ChatID, false, rc.Metadata)
+					// LOCAL FIX END: telegram reply target preservation
 					if err != nil {
 						slog.Debug("stream restart failed", "channel", rc.ChannelName, "error", err)
 					} else {
@@ -371,7 +387,6 @@ func extractPayloadString(payload any, key string) string {
 	return ""
 }
 
-
 // toolStatusMap maps builtin tool names to user-friendly status messages.
 var toolStatusMap = map[string]string{
 	// Filesystem
@@ -400,8 +415,8 @@ var toolStatusMap = map[string]string{
 	// Browser
 	"browser": "🌐 Browsing...",
 	// Delegation & teams
-	"spawn":        "👥 Delegating task...",
-	"team_tasks":   "📋 Managing team tasks...",
+	"spawn":      "👥 Delegating task...",
+	"team_tasks": "📋 Managing team tasks...",
 	// Sessions
 	"sessions_list":    "📋 Listing sessions...",
 	"session_status":   "📋 Checking session...",

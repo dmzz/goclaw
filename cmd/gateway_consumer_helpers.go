@@ -190,6 +190,23 @@ func resolveChannelType(channelMgr *channels.Manager, name string) string {
 	return channelMgr.ChannelTypeForName(name)
 }
 
+// LOCAL FIX START: telegram reply target preservation
+func buildFinalOutboundMeta(msg bus.InboundMessage, channelType string) map[string]string {
+	outMeta := channels.CopyFinalRoutingMeta(msg.Metadata)
+	if isTelegramChannel(msg.Channel, channelType) {
+		if mid := msg.Metadata["message_id"]; mid != "" {
+			outMeta["reply_to_message_id"] = mid
+		}
+	}
+	return outMeta
+}
+
+func isTelegramChannel(channelName, channelType string) bool {
+	return channelName == channels.TypeTelegram || channelType == channels.TypeTelegram
+}
+
+// LOCAL FIX END: telegram reply target preservation
+
 // resolveSenderName extracts the sender display name from channel metadata.
 // Checks "sender_name" (Feishu), "first_name" (Telegram), "push_name" (WhatsApp).
 // Sanitizes to prevent prompt injection via newlines/control chars.

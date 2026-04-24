@@ -11,7 +11,6 @@ import (
 
 	"github.com/nextlevelbuilder/goclaw/internal/agent"
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
-	"github.com/nextlevelbuilder/goclaw/internal/channels"
 	"github.com/nextlevelbuilder/goclaw/internal/channels/telegram/voiceguard"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/scheduler"
@@ -203,6 +202,9 @@ func processNormalMessage(
 	// Enable streaming when the channel supports it (so agent emits chunk events).
 	// The channel decides per chat type via separate dm_stream / group_stream flags.
 	isGroup := peerKind == string(sessions.PeerGroup)
+	// LOCAL FIX START: telegram reply target preservation
+	channelType := resolveChannelType(deps.ChannelMgr, msg.Channel)
+	// LOCAL FIX END: telegram reply target preservation
 	enableStream := deps.ChannelMgr != nil && deps.ChannelMgr.IsStreamingChannel(msg.Channel, isGroup)
 
 	// Group chats allow concurrent runs (multiple users can chat simultaneously).
@@ -215,12 +217,9 @@ func processNormalMessage(
 
 	// Build outbound metadata for reply-to + thread routing BEFORE RegisterRun
 	// so block.reply handler can use it for routing intermediate messages.
-	outMeta := channels.CopyFinalRoutingMeta(msg.Metadata)
-	if isGroup {
-		if mid := msg.Metadata["message_id"]; mid != "" {
-			outMeta["reply_to_message_id"] = mid
-		}
-	}
+	// LOCAL FIX START: telegram reply target preservation
+	outMeta := buildFinalOutboundMeta(msg, channelType)
+	// LOCAL FIX END: telegram reply target preservation
 
 	// Register run with channel manager for streaming/reaction event forwarding.
 	// Use localKey (composite key with topic suffix) so streaming/reaction events
@@ -386,12 +385,14 @@ func processNormalMessage(
 
 	// Schedule through main lane (per-session concurrency controlled by maxConcurrent)
 	outCh := deps.Sched.ScheduleWithOpts(schedCtx, "main", agent.RunRequest{
-		SessionKey:        sessionKey,
-		Message:           msg.Content,
-		Media:             reqMedia,
-		ForwardMedia:      fwdMedia,
-		Channel:           msg.Channel,
-		ChannelType:       resolveChannelType(deps.ChannelMgr, msg.Channel),
+		SessionKey:   sessionKey,
+		Message:      msg.Content,
+		Media:        reqMedia,
+		ForwardMedia: fwdMedia,
+		Channel:      msg.Channel,
+		// LOCAL FIX START: telegram reply target preservation
+		ChannelType: channelType,
+		// LOCAL FIX END: telegram reply target preservation
 		ChatTitle:         msg.Metadata[tools.MetaChatTitle],
 		ChatID:            msg.ChatID,
 		WorkspaceChatID:   msg.ChatID,
