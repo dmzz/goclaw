@@ -219,13 +219,13 @@ Required order:
    - `Dockerfile.prebuilt-full` must stay on top of `ghcr.io/nextlevelbuilder/goclaw:vX.Y.Z-full` or another explicitly reachable runtime base image. Do not introduce a `docker.io`-only base into this strict release path.
    - If the daemon cannot pull `ghcr.io` on this host, retry the same command with `--runtime-base-image` pointing to a cached local full image already present on the remote daemon, for example `goclaw:vX.Y.Z-dmzz.(N-1)-full`.
    - The strict prebuilt path must default to `DOCKER_BUILDKIT=0`, because BuildKit metadata resolution against `docker.io` / `ghcr.io` is known to fail on this Docker Desktop + SOCKS proxy setup even when the legacy builder works.
-3. Build the thin wrapper image from `/home/dmzz/project` against the freshly built base image:
-   - `DOCKER_API_VERSION=1.47 docker -H tcp://192.168.11.1:2375 build -t goclaw:full-sandbox --build-arg GOCLAW_BASE_IMAGE=goclaw:vX.Y.Z-dmzz.N-full -f /home/dmzz/project/Dockerfile.remote-full-sandbox /home/dmzz/project`
+3. Build the thin wrapper image from `/home/dmzz/project` against the freshly built base image. The dmzz sidecar Dockerfiles and compose overrides live under `/home/dmzz/project/goclaw-dmzz`:
+   - `DOCKER_API_VERSION=1.47 docker -H tcp://192.168.11.1:2375 build -t goclaw:full-sandbox --build-arg GOCLAW_BASE_IMAGE=goclaw:vX.Y.Z-dmzz.N-full -f /home/dmzz/project/goclaw-dmzz/Dockerfile.remote-full-sandbox /home/dmzz/project`
 4. Restart the deployed stack through the full `goclaw` compose project so existing named volumes and port bindings are preserved:
-   - `DOCKER_API_VERSION=1.47 docker -H tcp://192.168.11.1:2375 compose --env-file goclaw/.env --project-directory /home/dmzz/project -p goclaw -f goclaw/docker-compose.yml -f goclaw/docker-compose.postgres.yml -f goclaw/docker-compose.sandbox.yml -f docker-compose.postgres.remote-pgvector.yml -f docker-compose.remote-full-sandbox.yml up -d --no-build --force-recreate goclaw`
+   - `DOCKER_API_VERSION=1.47 docker -H tcp://192.168.11.1:2375 compose --env-file goclaw/.env --project-directory /home/dmzz/project -p goclaw -f goclaw/docker-compose.yml -f goclaw/docker-compose.postgres.yml -f goclaw/docker-compose.sandbox.yml -f goclaw-dmzz/docker-compose.postgres.remote-pgvector.yml -f goclaw-dmzz/docker-compose.remote-full-sandbox.yml up -d --no-build --force-recreate goclaw`
    - This must recreate `goclaw-goclaw-1` inside the existing `goclaw` project so it keeps the old named volumes such as `goclaw_goclaw-data`, `goclaw_goclaw-workspace`, and `goclaw_goclaw-skills`.
-   - `docker-compose.remote-full-sandbox.yml` must stay only as the last override file in that full stack; do not deploy it alone with an implicit project name from the current directory, because that creates a separate `project-goclaw-1` container without the existing persistent volumes and without the published external port.
-   - `docker-compose.remote-full-sandbox.yml` must keep `env_file: ./goclaw/.env` so runtime variables from `/home/dmzz/project/goclaw/.env` are injected into the container, while the CLI `--env-file goclaw/.env` continues to drive compose interpolation and build args.
+   - `goclaw-dmzz/docker-compose.remote-full-sandbox.yml` must stay only as the last override file in that full stack; do not deploy it alone with an implicit project name from the current directory, because that creates a separate `project-goclaw-1` container without the existing persistent volumes and without the published external port.
+   - `goclaw-dmzz/docker-compose.remote-full-sandbox.yml` must keep `env_file: ./goclaw/.env` so runtime variables from `/home/dmzz/project/goclaw/.env` are injected into the container, while the CLI `--env-file goclaw/.env` continues to drive compose interpolation and build args.
    - If the compose state is in doubt, inspect the resolved stack before restart with the same flags plus `config`; the resolved project name must be `goclaw`.
    - The remote compose stack does not synthesize `GOCLAW_POSTGRES_DSN`; `/home/dmzz/project/goclaw/.env` itself must already contain a real DSN before restart.
    - For the current remote host-gateway scheme, the DSN shape is `postgres://USER:PASSWORD@asus-note:5432/DB?sslmode=disable`.
@@ -239,7 +239,7 @@ Required order:
   - `DOCKER_API_VERSION=1.47 sh -c 'docker -H tcp://192.168.11.1:2375 ps -aq --filter label=goclaw.sandbox=true --filter status=exited | xargs -r docker -H tcp://192.168.11.1:2375 rm -f'`
 - Verify sandbox tail state with:
   - `DOCKER_API_VERSION=1.47 docker -H tcp://192.168.11.1:2375 ps -a --filter label=goclaw.sandbox=true`
-- Rebuild `goclaw-sandbox:bookworm-slim` only when `Dockerfile.sandbox.remote` or the sandbox toolchain changed. A normal GoClaw core update does not require rebuilding every sandbox container.
+- Rebuild `goclaw-sandbox:bookworm-slim` only when `/home/dmzz/project/goclaw-dmzz/Dockerfile.sandbox.remote` or the sandbox toolchain changed. A normal GoClaw core update does not require rebuilding every sandbox container.
 - If file tools (`read_file`, `write_file`, `list_files`, `exec`) suddenly start failing with `container name is already in use`, treat that first as a stale sandbox cleanup problem, not as an agent logic regression.
 
 ## Validation After Any Upstream Sync
